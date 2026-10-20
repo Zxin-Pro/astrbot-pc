@@ -13,7 +13,7 @@ from pathlib import Path
 APP_NAME = "AstrBotPC"
 APP_TITLE = "烛之控制台"
 APP_SUBTITLE = "AstrBot 烛版 · PC 端"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 
 def is_frozen() -> bool:

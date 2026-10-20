@@ -1,8 +1,8 @@
 # exe 属性里显示的版本信息（PyInstaller --version-file 格式）
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 2, 0, 0),
-    prodvers=(1, 2, 0, 0),
+    filevers=(1, 3, 0, 0),
+    prodvers=(1, 3, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -17,12 +17,12 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', '烛心'),
           StringStruct('FileDescription', '烛之控制台 · AstrBot 烛版 PC 端'),
-          StringStruct('FileVersion', '1.2.0'),
+          StringStruct('FileVersion', '1.3.0'),
           StringStruct('InternalName', 'AstrBotPC'),
           StringStruct('LegalCopyright', 'Copyright (C) 2026 烛心'),
           StringStruct('OriginalFilename', 'AstrBotPC.exe'),
           StringStruct('ProductName', '烛之控制台'),
-          StringStruct('ProductVersion', '1.2.0')
+          StringStruct('ProductVersion', '1.3.0')
         ]
       )
     ]),

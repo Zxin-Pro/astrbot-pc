@@ -93,21 +93,31 @@ def local_wheels() -> Path | None:
     return None
 
 
+def local_python() -> Path | None:
+    """懒人版内置的便携 Python（``resources\\python\\python.exe``）。"""
+    p = paths.RESOURCES_DIR / "python" / "python.exe"
+    return p if p.is_file() else None
+
+
 def offline() -> dict[str, Any]:
     """离线包里带了什么。界面拿它决定显示不显示「不用联网」那行提示。"""
     wheels = paths.RESOURCES_DIR / "wheels"
     count = len(list(wheels.glob("*.whl"))) if wheels.is_dir() else 0
     has_napcat = local_napcat() is not None
     has_astrbot = local_astrbot() is not None
+    has_python = local_python() is not None
     return {
         "dir": str(paths.RESOURCES_DIR),
         "napcat": has_napcat,
         "astrbot": has_astrbot,
         "wheels": count,
+        "python": has_python,
         # 两个源码包都在，装的过程就不用联网了（依赖另说）
         "sources": has_napcat and has_astrbot,
         # 三样齐全才算「一步都不用联网」，界面按这个措辞
         "ready": has_napcat and has_astrbot and count > 0,
+        # 连解释器都带上了 = 用户机器上一个 Python 都不用装
+        "lazy": has_napcat and has_astrbot and count > 0 and has_python,
     }
 
 
@@ -275,17 +285,20 @@ class DeployRunner:
 
     def _stage_env(self, dry_run: bool) -> tuple[bool, str]:
         snap = envcheck.snapshot(force=True)
-        missing = [i["name"] for i in snap["items"] if i["status"] == "missing" and i.get("required")]
-        if "Python" in missing:
+        # 按 key 判，别按 name——name 是给人看的文案，改一个字这里就静默失效
+        missing = [i["key"] for i in snap["items"] if i["status"] == "missing"]
+        if "python" in missing:
             return False, "缺少 Python，本机无法安装依赖"
         warn = [i["name"] for i in snap["items"] if i["status"] == "warn"]
         parts = [f"数据目录 {snap['dataRoot']}"]
         if warn:
             parts.append("注意：" + "、".join(warn))
-        if not dry_run and "QQ NT 客户端" in missing:
+        if not dry_run and "qq" in missing:
             parts.append("没装 QQ NT，NapCat 启动那步会失败")
         off = offline()
-        if off["sources"]:
+        if off["lazy"]:
+            parts.append("懒人版：源码、依赖和 Python 都内置，全程不用联网也不用另装 Python")
+        elif off["sources"]:
             parts.append("离线包已内置，不必联网")
             if not dry_run and not off["wheels"]:
                 parts.append("但依赖还得从网上装")
@@ -410,8 +423,9 @@ class DeployRunner:
         if not py:
             base, _ver = envcheck.find_python()
             if not base:
-                return False, ("找不到可用的 Python 解释器。装一个 Python 3.10 以上"
-                               "（勾选 Add to PATH），或者用目录版里的 resources 重装一次")
+                return False, ("找不到可用的 Python 解释器。建议改用「懒人版」安装包"
+                               "（里面自带便携 Python），或自己装一个 3.10 以上版本"
+                               "并勾选 Add to PATH")
             return False, f"虚拟环境建不起来（用的是 {base}），看看它的安装是否完整"
         wheels = local_wheels()
         index = (config.get("deploy.pipIndex") or "").strip()

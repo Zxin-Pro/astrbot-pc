@@ -17,12 +17,12 @@ import urllib.request
 from pathlib import Path
 
 REPO = "Zxin-Pro/astrbot-pc"
-TAG = "pc-v1.2.0"
-NAME = "烛之控制台 v1.2.0 · PC 端"
+TAG = "pc-v1.3.0"
+NAME = "烛之控制台 v1.3.0 · PC 端"
 DIST = Path(__file__).resolve().parent.parent / "dist"
-ZIP = DIST / "AstrBotPC-1.2.0-win64.zip"
-OFFLINE = DIST / "AstrBotPC-1.2.0-win64-offline.zip"
-SINGLE = DIST / "AstrBotPC-1.2.0-win64-single.exe"
+ZIP = DIST / "AstrBotPC-1.3.0-win64.zip"
+OFFLINE = DIST / "AstrBotPC-1.3.0-win64-offline.zip"
+SINGLE = DIST / "AstrBotPC-1.3.0-win64-single.exe"
 
 TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 HEADERS = {
@@ -31,26 +31,46 @@ HEADERS = {
     "Accept": "application/vnd.github+json",
 }
 
-BODY = """## 烛之控制台 v1.2.0 · AstrBot 烛版 PC 端
+BODY = """## 烛之控制台 v1.3.0 · AstrBot 烛版 PC 端
 
 把手机上那套「QQ 机器人一键包」搬到 Windows：一个自绘界面的桌面客户端，负责装 NapCat 与 AstrBot、看着两个进程、扫码登录、翻日志、备份与恢复。
 
-### 下载
+### 该下哪个
 
-- **AstrBotPC-1.2.0-win64-offline.zip**（约 350 MB）——**推荐**。离线包，里面带着 NapCat、AstrBot 源码和全部依赖 wheel，解压后点「开始部署」全程不联网
-- **AstrBotPC-1.2.0-win64.zip**（约 22 MB）——小包。解压到任意目录双击 `AstrBotPC.exe`，部署时联网下载（国内直连 GitHub 常握手超时，向导会自动换加速镜像）
-- **AstrBotPC-1.2.0-win64-single.exe**（约 22 MB）——单文件版，拷一个文件就能跑（冷启动约 2 秒），部署时联网下载
-- 不需要装 Python；Windows 10/11 自带 WebView2，更老的系统补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
+| 文件 | 大小 | 适合谁 | 装的时候 |
+|---|---|---|---|
+| **AstrBotPC-1.3.0-win64-offline.zip**（懒人版） | 约 285 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
+| AstrBotPC-1.3.0-win64.zip（目录版） | 约 22 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
+| AstrBotPC-1.3.0-win64-single.exe（单文件版） | 约 22 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
+
+**懒人版**里带着 NapCat、AstrBot 源码、151 个依赖 wheel，还有一份便携 Python 3.12。下载一个包，解压，双击 `AstrBotPC.exe`，点「开始部署」，全程不用打开浏览器、不用装任何东西、不用连网。
+
+**单文件版**是「节目录都省了」的形态：一个 22 MB 的 exe 拷到哪都能跑（冷启动约 2 秒）。代价是它不带离线资源，部署时要联网，而且你自己机器上得有一个 Python 3.10+（打包版会依次找 `py -3`、PATH 里的 `python`、常见安装目录）。
+
+三个包是同一份程序，界面和功能完全一样，区别只在「部署安装那几分钟怎么过」。
+
+- Windows 10/11 自带 WebView2，更老的系统补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 - 绿色版：删目录即卸载，配置与日志写在 `%LOCALAPPDATA%\\AstrBotPC`
+- 懒人版体积大是因为资源摆在 `AstrBotPC.exe` 旁边的 `resources\\` 里，删掉它就是目录版
+
+### 1.3.0：懒人版，连 Python 都不用装
+
+- `resources\\python\\` 里放一份便携 Python 3.12.10（NuGet 的完整发行版，含 `Lib\\venv` 与 `ensurepip`）
+- 建虚拟环境时优先用内置解释器，其次才是 `py -3`、PATH 和常见安装目录
+- 环境体检里那条会写「内置便携版，不用另装 Python」，一眼看出用的是哪个
+- 顺带解决一个隐患：wheel 是按 3.12 打的，以前系统里是 3.13 就装不上、要退回联网；现在内置解释器固定 3.12，永远配得上
+- 修：`_stage_env` 判「有没有 Python」时按名字匹配（`"Python" in names`），而实际名字是「Python 运行时」，这个判断从来没生效过；改成按 key 判
+- `tools/build_offline.py --lazy` 一键备齐四样资源；顺手把源码包（`.tar.gz`）就地编译成 wheel，纯离线装依赖才不会因为「没有 setuptools」失败
+- 部署页「离线资源」那行会显示成 `懒人版` 徽标，并写明不用联网也不用装 Python
 
 ### 1.2.0：离线包，装的时候一步网都不用联
 
-- 新增离线版安装包：`resources\\` 里预置 NapCat、AstrBot 源码和全部依赖 wheel（约 350 MB）
+- 新增离线版安装包：`resources\\` 里预置 NapCat、AstrBot 源码和全部依赖 wheel
 - 部署向导先看 `resources\\`：有就直接解压，没有才联网下载。两种包是同一份程序，不用改设置
 - 「部署」页的环境体检多一行「离线资源」，一眼看出这次会不会联网
 - 依赖改成 `pip install --no-index --find-links`，从内置 wheel 装
-- wheel 是按打包时的 Python（3.12 / win_amd64）挑的；万一用户机器版本不同装不上，会自动退回联网安装并说明原因，不会卡死
 - 离线资源摆在 `AstrBotPC.exe` 旁边的 `resources\\`，用户看得见也换得掉，不塞进 exe 内部
+- 修：打包后 `sys.executable` 是 `AstrBotPC.exe`，按它建虚拟环境必然失败；改成先找系统里的真 Python
 
 ### 1.1.1：图标换成手机版那张
 
@@ -85,7 +105,7 @@ BODY = """## 烛之控制台 v1.2.0 · AstrBot 烛版 PC 端
 
 - NapCat 首次登录需要人工扫码，向导只负责把二维码页面准备好
 - 更新只提示不自动覆盖安装（本机程序自替换风险太高）
-- 离线版的 wheel 绑定打包时的 Python 版本，换 Python 大版本的用户会走联网安装
+- 目录版和单文件版没有内置 wheel，wheel 按打包时的 Python 版本挑；懒人版没这个问题
 
 烛心.xyz · QQ 群 1127997343
 """

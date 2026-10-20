@@ -10,17 +10,21 @@
 
 ### 直接下 exe
 
-去 [Releases](https://github.com/Zxin-Pro/astrbot-pc/releases) 下任意一个：
+去 [Releases](https://github.com/Zxin-Pro/astrbot-pc/releases) 挑一个：
 
-| 文件 | 大小 | 用法 |
+| 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `AstrBotPC-1.2.0-win64-offline.zip` | 约 260 MB | **离线版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码与全部依赖 wheel，部署全程不用联网 |
-| `AstrBotPC-1.2.0-win64.zip` | 约 22 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载 |
-| `AstrBotPC-1.2.0-win64-single.exe` | 约 22 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒。部署时联网下载 |
+| `AstrBotPC-1.3.0-win64-offline.zip` | 约 285 MB | **懒人版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码、全部依赖 wheel，还有一份便携 Python 3.12——部署全程不联网，也不用另装 Python |
+| `AstrBotPC-1.3.0-win64.zip` | 约 22 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载，pip 装依赖，本机要有 Python 3.10+ |
+| `AstrBotPC-1.3.0-win64-single.exe` | 约 22 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒（原因见下）。部署时联网，同样要本机 Python |
 
-不需要装 Python；Windows 10/11 自带 WebView2，更老的系统要补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。程序是绿色版，删目录即卸载（单文件版删 exe），设置与日志都写在 `%LOCALAPPDATA%\AstrBotPC`。
+三个包是**同一份程序**，界面和功能完全一样，区别只在「部署安装那几分钟怎么过」。
 
-离线版和普通版是同一份程序，区别只在 `resources\` 这个文件夹。删掉它就是普通版，想升级也是重新下一次离线包。
+**懒人版**适合「不想折腾、也不想等下载」：下载一个包，解压，双击，点「开始部署」，机器人就装好了。它大是因为 `resources\` 里实打实地躺着一整套离线资源（删掉这个文件夹就退化成目录版）。
+
+**单文件版**适合「节目录都省了」：一个 exe 拷到 U 盘、拷到别人机器上都能双击运行。代价是它每次启动都要先把内部文件解压到临时目录（所以冷启动慢 2–4 秒），而且不带离线资源——部署那步还是得联网、还得有本机 Python。
+
+Windows 10/11 自带 WebView2，更老的系统要补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。程序是绿色版，删目录即卸载（单文件版删 exe），设置与日志都写在 `%LOCALAPPDATA%\AstrBotPC`。
 
 ### 从源码跑
 
@@ -156,7 +160,8 @@ astrbot-pc/
 ├─ resources/       离线部署资源（git 忽略，打包进离线版）
 │  ├─ napcat.zip    NapCat.Shell.Windows.Node（约 118 MB）
 │  ├─ astrbot.zip   AstrBot 源码包（约 8 MB）
-│  └─ wheels/       依赖 wheel（约 300 MB）
+│  ├─ wheels/       依赖 wheel（约 118 MB，151 个）
+│  └─ python/       便携 Python 3.12（约 37 MB，懒人版才有）
 ├─ build/           app.ico、version_info.txt（打包时用，别删）
 └─ docs/            设计说明
 ```
@@ -166,16 +171,16 @@ astrbot-pc/
 ```powershell
 # 先收离线资源（不做这步就只能出联网版）
 python tools\build_offline.py --check      # 看看缺什么
-python tools\build_offline.py              # 缺什么下什么
+python tools\build_offline.py --lazy       # 缺什么下什么，连便携 Python 一起备齐
 
 powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 # → dist\AstrBotPC\AstrBotPC.exe                     目录版
-# → dist\AstrBotPC-1.2.0-win64.zip                   目录版压缩包（22 MB，联网装）
-# → dist\AstrBotPC-1.2.0-win64-single.exe            单文件版（22 MB，联网装）
-# → dist\AstrBotPC-1.2.0-win64-offline.zip           离线版（260 MB，不联网）
+# → dist\AstrBotPC-1.3.0-win64.zip                   目录版压缩包（22 MB，联网装）
+# → dist\AstrBotPC-1.3.0-win64-single.exe            单文件版（22 MB，联网装）
+# → dist\AstrBotPC-1.3.0-win64-offline.zip           懒人版（285 MB，不联网也不用装 Python）
 ```
 
-没有 `resources\` 时最后一行会自动跳过，其余产物不变。
+没有 `resources\` 时最后一行会自动跳过，其余产物不变。不加 `--lazy` 也能出离线版，只是那一包还需要用户机器上有 Python。
 
 ---
 
@@ -188,7 +193,7 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
    ```powershell
    set GITHUB_TOKEN=ghp_xxx
    python tools\release.py        # 建 pc-v1.2.0 Release + 上传 zip 与离线包
-   python tools\upload_asset.py dist\AstrBotPC-1.2.0-win64-single.exe --tag pc-v1.2.0
+   python tools\upload_asset.py dist\AstrBotPC-1.3.0-win64-single.exe --tag pc-v1.2.0
    ```
 
    tag 必须用 `pc-v<版本>` 或资产名带 `PC`——`update.py` 只认这两种，否则客户端不会提示更新。
@@ -258,20 +263,23 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
 ### 离线资源怎么起作用
 
-`astrbot_pc/paths.py` 的 `RESOURCES_DIR` 认 `AstrBotPC.exe` 同级的 `resources\`（onedir 的 `_MEIPASS` 指向 `_internal/`，所以不能按它找）。里面有这三样就算齐：
+`astrbot_pc/paths.py` 的 `RESOURCES_DIR` 认 `AstrBotPC.exe` 同级的 `resources\`（onedir 的 `_MEIPASS` 指向 `_internal/`，所以不能按它找）。里面有这四样就是懒人版：
 
 ```
 resources/
 ├─ napcat.zip      NapCat.Shell.Windows.Node
 ├─ astrbot.zip     AstrBot 源码
-└─ wheels/         *.whl
+├─ wheels/         *.whl
+└─ python/         便携 Python 3.12（python.exe + Lib/ + DLLs/）
 ```
 
-「部署」页的环境体检会多一行「离线资源」，写明这次会不会联网。缺一样也不报错，缺的那步照常走网络。
+「部署」页的环境体检会多一行「离线资源」，写明这次会不会联网、要不要另装 Python。四样齐了徽标显示「懒人版」，缺一样也不报错，缺的那步照常走网络。
 
-wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。用户机器上 Python 大版本不同时装不上，代码会自动退回联网 `pip install` 并在结果里写明「离线包版本对不上，这次走了网络」，不会卡死在这一步。
+`resources/python/` 是 NuGet 的 `python` 包解出来的（完整 CPython 发行版，带 `Lib\venv` 与 `ensurepip`），实测能 `-m venv` 也能从离线 wheel 装包。**注意 embeddable 那个 zip 不行**：它没有 `venv` 也没 `ensurepip`，看着体积小，建不出虚拟环境。
 
-部署要建虚拟环境，这一步得用**真的 Python 解释器**。打包成 exe 之后 `sys.executable` 指向 `AstrBotPC.exe` 本身，它不认 `-m venv`——所以程序会去系统里找：先试 `py -3`，再试 PATH 里的 `python`，最后扫常见安装目录。完全找不到时，环境体检会直接把「Python 运行时」标成缺失，提示先装 Python 3.10 以上。
+部署要建虚拟环境，这一步得用**真的 Python 解释器**。打包成 exe 之后 `sys.executable` 指向 `AstrBotPC.exe` 本身，它不认 `-m venv`。所以 `find_python()` 按这个顺序找：**内置便携版** → `py -3` → PATH 里的 `python` → 常见安装目录。内置的排第一不只是图省事——wheel 是按 3.12 打的，用内置解释器就永远是 3.12，不会碰上「系统里是 3.13 装不上」；四样都没找到时，环境体检会把「Python 运行时」标成缺失，提示改用懒人版。
+
+wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。目录版和单文件版没带解释器，用户机器上版本不同时装不上，代码会自动退回联网 `pip install` 并在结果里写明「离线包版本对不上，这次走了网络」，不会卡死在这一步。
 
 下载走断点续传（`Range`），失败自动退避重试两次；进度按 0.25s 节流推到界面，显示已下多少 / 总共多少 / 当前速度。
 
@@ -295,7 +303,8 @@ wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。用户机器上 
 - 下载链路：实测选源（直连 + 三个加速镜像并发测速后取最快）、断点续传、半截包不算成功、20 秒没新数据就换源
 - 界面访问范围：「仅本机」/「允许局域网」真的会改监听地址（重启界面生效）
 - 离线包：`resources\` 里带 NapCat、AstrBot 源码与依赖 wheel，部署全程不联网；缺哪样就那一步走网络，不影响其它步
-- exe 已发布：<https://github.com/Zxin-Pro/astrbot-pc/releases>（离线版约 260 MB，普通版约 22 MB，另有单文件 exe）
+- 懒人版：`resources\python\` 再带一份便携 Python 3.12，用户机器上一个 Python 都不用装；实测能建 venv、能离线装 151 个包
+- exe 已发布：<https://github.com/Zxin-Pro/astrbot-pc/releases>（懒人版约 285 MB，普通版约 22 MB，另有单文件 exe）
 - 液态玻璃界面：深浅两套主题都有；底图、玻璃、颗粒三层叠出透色，关掉即回到原实色界面
 - Playwright 冒烟：八页零控制台报错、零失败请求，390px 窄屏不溢出；深色主题同样过一遍
 
@@ -308,17 +317,30 @@ wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。用户机器上 
 
 ## 九、更新日志
 
+### 1.3.0
+
+懒人版，连 Python 都不用装：
+
+- **包内自带解释器**：`resources\python\` 放一份便携 Python 3.12.10（NuGet `python` 包的完整发行版，含 `Lib\venv` 与 `ensurepip`）。解压即用，用户机器上不装任何东西也能完成部署。
+- **为什么不用 embeddable zip**：那个包小 4 MB，但没有 `venv` 也没有 `ensurepip`，建不出虚拟环境。体积换功能，这里不该省。
+- **找解释器的顺序**：内置便携版 → `py -3` → PATH 里的 `python` → 常见安装目录。内置的排第一是为了让 wheel 一定配得上（cp312）。
+- **体检文案**：环境体检里那条会写「3.12.10（内置便携版，不用另装 Python）」，一眼看出用的是哪个解释器。
+- **顺带修一个静默失效**：`_stage_env` 判「有没有 Python」用的是 `"Python" in missing`，而那一项的名字是「Python 运行时」，这个判断从加上那天起就没生效过。改成按 key 判。
+- **顺带修 sdist**：`aiocqhttp` 与 `jieba` 上游只发源码包，纯离线装它们要现场编译，而 Python 3.12 的 venv 不再自带 setuptools，必然失败。构建脚本现在会就地编译成 wheel（`aiocqhttp-1.4.4-py3-none-any.whl`、`jieba-0.42.1-py3-none-any.whl`）。
+- **一键备齐**：`python tools/build_offline.py --lazy`，四样资源全下齐并校验。
+- **部署页**：「离线资源」那行四样齐全时显示「懒人版」徽标，写明不用联网也不用装 Python；确认弹层文案跟着变。
+
 ### 1.2.0
 
 离线包，装的时候一步网都不用联：
 
-- **新增离线版安装包**：`AstrBotPC-1.2.0-win64-offline.zip` 里带 `resources\`，预置 NapCat、AstrBot 源码和全部依赖 wheel（约 260 MB）。解压后点「开始部署」，从第一个文件到 pip 装完都不联网。
+- **新增离线版安装包**：`AstrBotPC-1.3.0-win64-offline.zip` 里带 `resources\`，预置 NapCat、AstrBot 源码和全部依赖 wheel。解压后点「开始部署」，从第一个文件到 pip 装完都不联网。
 - **两种包是同一份程序**：`paths.RESOURCES_DIR` 认 exe 同级的 `resources\`；有就解压，没有就照旧联网下载。删掉 `resources\` 就等于退回普通版。
-- **不强塞进 exe**：单文件版仍是 22 MB。260 MB 塞进去每次启动都得往临时目录解压，冷启动几十秒，得不偿失。
+- **不强塞进 exe**：单文件版仍是 22 MB。几百 MB 塞进去每次启动都得往临时目录解压，冷启动几十秒，得不偿失。
 - **环境体检多一行**：部署页右侧「环境体检」上方显示「离线资源」，写明内置了什么、这次会不会联网；缺的部分照常走网络。
-- **依赖走本地仓库**：`pip install --no-index --find-links <wheels>`。万一用户 Python 大版本和打包时不同（wheel 是 cp312 / win_amd64），自动退回联网安装并注明原因，不会卡死在第五步。
+- **依赖走本地仓库**：`pip install --no-index --find-links <wheels>`。
 - **演练模式文案跟着变**：有离线包时，确认弹层和横幅改成「从内置离线包解压，不用联网」。
-- **修 exe 建不出虚拟环境**：打包后 `sys.executable` 是 `AstrBotPC.exe`，`-m venv` 直接被拒，第五步永远失败。现在先找系统里的真 Python（`py -3` → PATH 的 `python` → 常见安装目录），环境体检显示的也是它而不是 exe 自己。
+- **修 exe 建不出虚拟环境**：打包后 `sys.executable` 是 `AstrBotPC.exe`，`-m venv` 直接被拒，第五步永远失败。现在先找系统里的真 Python，环境体检显示的也是它而不是 exe 自己。
 
 ### 1.1.1
 
@@ -389,11 +411,14 @@ Windows 会把不常用的图标折叠进「^」里，点开找一下。如果�
 **「检查更新」说没有新版本？**
 说明你已经在最新版。程序只认 `pc-*` 的 tag 或名字带 `PC` 的资产，不会拿手机版 APK 冒充桌面版；查不到 Release 时会照实说「桌面版会单独出包」。
 
-**下载 260 MB 的离线包太慢？**
-下 22 MB 的普通版也一样能用，只是部署那一步要联网拉 NapCat（约 118 MB）和 AstrBot 依赖。国内直连 GitHub 经常握手超时，向导会自动换加速镜像，也可以在「设置 → 部署」里关掉加速或填自己的地址。
+**下载 285 MB 的懒人版太慢？**
+下 22 MB 的目录版也一样能用，只是部署那一步要联网拉 NapCat（约 118 MB）和 AstrBot 依赖，还得本机有 Python。国内直连 GitHub 经常握手超时，向导会自动换加速镜像，也可以在「设置 → 部署」里关掉加速或填自己的地址。
+
+**懒人版和单文件版到底差在哪？**
+懒人版是个文件夹（解压出来一堆文件），但里面带齐了 NapCat、AstrBot、依赖和 Python，部署时什么都不用管；单文件版就是一个 exe，拷到哪都能跑，但它不带这些资源，部署时要联网、还要本机有 Python。功能一样，差的是「部署那几分钟怎么过」。
 
 **离线版装依赖还是走了网络？**
-wheel 是按打包时的 Python（3.12 / win_amd64）挑的。你机器上如果是 3.13 之类，那些 wheel 装不上，程序会自动退回联网安装，日志里会写「离线包版本对不上，这次走了网络」。
+wheel 是按打包时的 Python（3.12 / win_amd64）挑的。目录版和单文件版没有内置解释器，你机器上如果是 3.13 之类，那些 wheel 装不上，程序会自动退回联网安装，日志里会写「离线包版本对不上，这次走了网络」。换成懒人版就没这问题——它自带的解释器固定是 3.12。
 
 ---
 

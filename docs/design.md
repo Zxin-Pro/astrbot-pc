@@ -162,3 +162,9 @@ wheel 是按打包时的 Python 版本挑的（cp312 / win_amd64）。用户机�
 
 **打包之后 `sys.executable` 不是 Python。**
 `python -m venv` 建虚拟环境靠的是 `sys.executable`。冻进 exe 之后它指向 `AstrBotPC.exe`——这个文件自己就是 Python 程序，但对外只认自己的命令行参数，`-m venv` 会直接失败。这个 bug 只在打包版里出现，源码跑一万遍也复现不了，所以每次改部署逻辑都要**拿真正的 exe 跑一遍**。修法是回到系统里找解释器（`py -3` → PATH 的 `python` → 常见安装目录），找到的路径同时拿去纠正环境体检里显示的「Python 运行时」——否则界面上会写着 `3.12.10（AstrBotPC.exe）`，一眼假。
+
+**与其到处找解释器，不如自己带一个。**
+「让用户装 Python」这件事本身就是个坑：装错版本、没勾 Add to PATH、装在中文路径、安全软件拦一下——每一种都要来回好几轮。懒人版的做法是把一份便携 CPython 放进 `resources\python\`（NuGet 的 `python` 包解出来就是完整发行版），`find_python()` 优先用它。附带好处是 wheel 一定配得上：wheel 按 3.12 打，解释器也固定 3.12，不会出现「系统里是 3.13 装不上」。**别用 embeddable zip**——它没有 `venv` 也没有 `ensurepip`，省下 4 MB 换来一个建不起来的虚拟环境。
+
+**按名字匹配一批东西，等于埋一个静默失效的开关。**
+`_stage_env` 里原来写 `if "Python" in missing`，而 `missing` 装的是各项的显示名，那一项叫「Python 运行时」——这个判断从加上那天起就没生效过，永远返回 False，代码还看着挺合理。凡是拿显示文案当条件的地方，都该改成按稳定的 key（`python` / `qq` / `git`）判，显示名只用来给人看。

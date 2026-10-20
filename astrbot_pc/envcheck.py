@@ -63,11 +63,25 @@ _PY_PROBE = ("import sys;print(sys.executable);"
              "print('%d.%d.%d' % sys.version_info[:3])")
 
 
+def bundled_python() -> Path | None:
+    """懒人版内置的便携 Python；没有就返回 ``None``。
+
+    离线包的 ``resources\\python\\`` 里放着一份完整 CPython（来自 NuGet 的
+    ``python`` 包，含 ``Lib\\venv`` 与 ``ensurepip``），所以用户机器上一个
+    Python 都不用装。它还有个隐性好处：wheel 是按 3.12 打的，用内置解释器
+    就永远是 3.12，不会碰上「系统里是 3.13 装不上」。
+    """
+    exe = paths.RESOURCES_DIR / "python" / "python.exe"
+    return exe if exe.is_file() else None
+
+
 def find_python() -> tuple[str, tuple[int, int, int]]:
     """找一个能跑 ``-m venv`` 的真 Python，返回 (路径, 版本号)。
 
     打包成 exe 之后 ``sys.executable`` 是 ``AstrBotPC.exe``：它本身就是个
-    Python 程序，但对外不认 ``-m venv`` 这类参数，建虚拟环境必须回系统里找。
+    Python 程序，但对外不认 ``-m venv`` 这类参数，建虚拟环境必须另找解释器。
+    顺序是「内置便携版 → py 启动器 → PATH → 常见安装目录」，内置的排第一是
+    因为它一定能配上离线包里的 wheel。
     找不到就返回 ``("", (0,0,0))``，上层据此给出能照着做的提示。
     """
     if not paths.is_frozen():
@@ -88,6 +102,13 @@ def find_python() -> tuple[str, tuple[int, int, int]]:
             return None
         return lines[0], ver  # type: ignore[return-value]
 
+    # 内置便携版最优先：离线包的 wheel 就是按它打的，一定配得上
+    builtin = bundled_python()
+    if builtin is not None:
+        hit = probe([str(builtin), "-c", _PY_PROBE])
+        if hit:
+            return hit
+
     # py 启动器最可靠（它认得所有已安装的版本），其次是 PATH 里的 python
     for argv in (["py", "-3", "-c", _PY_PROBE], ["python", "-c", _PY_PROBE]):
         hit = probe(argv)
@@ -107,24 +128,49 @@ def find_python() -> tuple[str, tuple[int, int, int]]:
     return "", (0, 0, 0)
 
 
+def _offline() -> dict[str, Any]:
+    """问 deploy 要一份离线包现状；出任何岔子都当没有，别把体检搞崩。
+
+    deploy 在模块层就 import 了 envcheck，所以这里必须惰性 import。
+    """
+    try:
+        from .deploy import offline
+
+        return offline()
+    except Exception:
+        return {}
+
+
 def check_python() -> dict[str, Any]:
     exe, ver_tuple = find_python()
     if not exe:
+        off = _offline()
+        detail = (
+            "没找到能用的 Python。装一个 3.10 以上版本（勾选 Add to PATH）再回来"
+            if not off.get("ready")
+            else "没找到能用的 Python。这个包里也没带便携版，装一个 3.10 以上版本再回来"
+        )
         return {
             "key": "python",
             "name": "Python 运行时",
             "status": "missing",
-            "detail": "没找到能用的 Python。装一个 3.10 以上版本（勾选 Add to PATH）再回来",
+            "detail": detail,
             "path": "",
             "required": True,
         }
     ver = ".".join(str(x) for x in ver_tuple)
     ok = ver_tuple >= (3, 10)
+    builtin = bundled_python()
+    is_builtin = builtin is not None and Path(exe) == builtin
+    if ok:
+        detail = f"{ver}（内置便携版，不用另装 Python）" if is_builtin else f"{ver}（{exe}）"
+    else:
+        detail = f"{ver}，AstrBot 需要 ≥ 3.10"
     return {
         "key": "python",
         "name": "Python 运行时",
         "status": "ok" if ok else "warn",
-        "detail": f"{ver}（{exe}）" if ok else f"{ver}，AstrBot 需要 ≥ 3.10",
+        "detail": detail,
         "path": exe,
         "required": True,
     }
@@ -361,13 +407,7 @@ def snapshot(force: bool = False, ttl: float = 20.0) -> dict[str, Any]:
     items = [check_python(), check_git(), check_qq(), check_napcat(), check_astrbot(), check_disk()]
 
     # 有离线包就说清楚「不用联网」，别让用户以为还得连 GitHub。
-    # 这里才 import deploy：deploy 在模块层就 import 了 envcheck，放函数里避免循环。
-    try:
-        from .deploy import offline as _offline
-
-        off = _offline()
-    except Exception:
-        off = {}
+    off = _offline()
     if off.get("napcat") or off.get("astrbot"):
         for it in items:
             if it["status"] != "missing":
