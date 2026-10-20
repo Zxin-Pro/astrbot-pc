@@ -134,6 +134,8 @@ astrbot-pc/
 │     └─ pages/     dashboard / deploy / services / logs / login / instances / backups / settings
 ├─ tools/           冒烟截图、打包、图标生成与调试脚本
 │  ├─ build_exe.ps1 一条命令出 exe + 发布 zip
+│  ├─ release.py    建 GitHub Release 并上传 zip
+│  ├─ push_api.py   只放行 api.github.com 时的推送通道
 │  ├─ make_icon.py  从 favicon.svg 渲染多尺寸 .ico
 │  ├─ smoke.py      八页零报错冒烟
 │  └─ probe_update.py 用假数据验证版本 chip
@@ -149,6 +151,28 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 # → dist\AstrBotPC-1.0.0-win64.zip
 ```
 
+---
+
+## 五、发版流程
+
+1. 改版本号：`astrbot_pc/paths.py` 的 `APP_VERSION`、`build/version_info.txt`、`tools/release.py` 里的 `TAG` 与 `ZIP`
+2. 打包：`powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1`
+3. 发布：
+
+   ```powershell
+   set GITHUB_TOKEN=ghp_xxx
+   python tools\release.py        # 建 pc-v1.0.0 Release + 上传 zip
+   ```
+
+   tag 必须用 `pc-v<版本>` 或资产名带 `PC`——`update.py` 只认这两种，否则客户端不会提示更新。
+4. 推送代码（`git push` 被网络挡掉时）：
+
+   ```powershell
+   python tools\push_api.py       # blob → tree → commit → ref，走 api.github.com
+   ```
+
+发完之后，老版本客户端下次启动就会在标题栏出现「新版 v…」胶囊，点开是这份 Release 的说明。
+
 后端接口统一：
 
 ```json
@@ -162,7 +186,7 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
 ---
 
-## 五、设计规范
+## 六、设计规范
 
 - 主色 `#2563EB`，暖强调 `#EA580C`，正文 `#0F172A`，次级 `#475569`，分隔线 `#E2E8F0`
 - 圆角 12px 基准（卡片 16、标签 8），间距按 4/8 节奏，卡片内边距 20–24px
@@ -174,7 +198,7 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
 ---
 
-## 六、部署向导在做什么
+## 七、部署向导在做什么
 
 八步里前六步是「装」，后两步是「起」。每步都会把结果写进「日志」页，失败时红字会带上原始报错尾巴。
 
@@ -195,7 +219,7 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
 ---
 
-## 七、当前进度
+## 八、当前进度
 
 已跑通：
 
@@ -221,7 +245,7 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
 ---
 
-## 八、常见问题
+## 九、常见问题
 
 **双击 `run.bat` 没反应？**
 用 `run-console.bat` 看报错。多半是 `python` 不在 PATH，或没装 `requirements.txt` 里的依赖。
