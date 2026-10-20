@@ -31,7 +31,7 @@ HEADERS = {
     "Accept": "application/vnd.github+json",
 }
 
-BODY = """## 烛之控制台 v1.3.0 · AstrBot 烛版 PC 端
+BODY = """## {name}
 
 把手机上那套「QQ 机器人一键包」搬到 Windows：一个自绘界面的桌面客户端，负责装 NapCat 与 AstrBot、看着两个进程、扫码登录、翻日志、备份与恢复。
 
@@ -140,7 +140,7 @@ def ensure_release() -> dict:
         "tag_name": TAG,
         "target_commitish": "main",
         "name": NAME,
-        "body": BODY,
+        "body": BODY.format(name=NAME),
         "draft": False,
         "prerelease": False,
     })
