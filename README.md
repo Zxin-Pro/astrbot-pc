@@ -10,9 +10,14 @@
 
 ### 直接下 exe
 
-去 [Releases](https://github.com/Zxin-Pro/astrbot-pc/releases) 下 `AstrBotPC-1.0.0-win64.zip`，解压到任意目录，双击 `AstrBotPC.exe`。
+去 [Releases](https://github.com/Zxin-Pro/astrbot-pc/releases) 下任意一个：
 
-不需要装 Python；Windows 10/11 自带 WebView2，更老的系统要补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。程序是绿色版，删目录即卸载，设置与日志都写在 `%LOCALAPPDATA%\AstrBotPC`。
+| 文件 | 用法 |
+| --- | --- |
+| `AstrBotPC-1.0.0-win64-single.exe` | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒 |
+| `AstrBotPC-1.0.0-win64.zip` | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快 |
+
+不需要装 Python；Windows 10/11 自带 WebView2，更老的系统要补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。程序是绿色版，删目录即卸载（单文件版删 exe），设置与日志都写在 `%LOCALAPPDATA%\AstrBotPC`。
 
 ### 从源码跑
 
@@ -105,7 +110,8 @@ AstrBotPC/
 ```
 astrbot-pc/
 ├─ launcher.py      PyInstaller 的入口（源码跑也行）
-├─ build.spec       打包配置：onedir、图标、版本信息、WebView2 依赖
+├─ build.spec       打包配置：目录版（onedir）
+├─ build_onefile.spec  打包配置：单文件版（onefile）
 ├─ launch_gui.pyw   开机自启用：无控制台拉起桌面窗口
 ├─ astrbot_pc/
 │  ├─ app.py        入口与三种启动方式
@@ -147,8 +153,9 @@ astrbot-pc/
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
-# → dist\AstrBotPC\AstrBotPC.exe
-# → dist\AstrBotPC-1.0.0-win64.zip
+# → dist\AstrBotPC\AstrBotPC.exe                 目录版
+# → dist\AstrBotPC-1.0.0-win64.zip               目录版压缩包
+# → dist\AstrBotPC-1.0.0-win64-single.exe        单文件版
 ```
 
 ---

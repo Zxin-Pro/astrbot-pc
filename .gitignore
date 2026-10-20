@@ -3,9 +3,11 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 
-# 打包产物
+# 打包产物（两种形态的工作目录都要挡掉，否则几十 MB 的 exe 会被提交）
 dist/
+dist-onefile/
 .build/
+.build-onefile/
 build/AstrBotPC/
 build/build/
 
