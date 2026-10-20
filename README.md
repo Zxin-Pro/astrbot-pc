@@ -233,6 +233,7 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 - 开机自启（写 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`，不需要管理员；关掉就删键）
 - 真实下载与解压（断点续传、进度回传、自动剥顶层目录）、虚拟环境与 pip 安装、OneBot 与 AstrBot 配置写入
 - 界面访问范围：「仅本机」/「允许局域网」真的会改监听地址（重启界面生效）
+- exe 已发布：<https://github.com/Zxin-Pro/astrbot-pc/releases>（onedir 绿色版，zip 约 22 MB）
 - Playwright 冒烟：八页零控制台报错、零失败请求，390px 窄屏不溢出；深色主题同样过一遍
 
 还没接：
@@ -273,4 +274,4 @@ Windows 会把不常用的图标折叠进「^」里，点开找一下。如果�
 
 ---
 
-烛心.xyz · QQ 群 1127997343 · <https://github.com/Zxin-Pro/astrbot-candle>
+烛心.xyz · QQ 群 1127997343 · PC 端仓库 <https://github.com/Zxin-Pro/astrbot-pc> · 手机版 <https://github.com/Zxin-Pro/astrbot-candle>
