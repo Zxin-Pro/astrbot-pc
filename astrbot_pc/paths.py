@@ -13,7 +13,7 @@ from pathlib import Path
 APP_NAME = "AstrBotPC"
 APP_TITLE = "烛之控制台"
 APP_SUBTITLE = "AstrBot 烛版 · PC 端"
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.2.0"
 
 
 def is_frozen() -> bool:
@@ -40,6 +40,26 @@ def _app_dir() -> Path:
 
 APP_DIR = _app_dir()
 UI_DIR = APP_DIR / "ui"
+
+
+def _res_dir() -> Path:
+    """离线资源目录：跟 exe 放在一起的 ``resources/``。
+
+    不能用 ``APP_DIR``——PyInstaller 6 的 onedir 布局里 ``sys._MEIPASS`` 指向
+    ``_internal/``，而用户解压出来看到的是 ``AstrBotPC.exe`` 和它旁边的文件夹。
+    资源要出现在用户能看见的地方，所以认 ``sys.executable`` 的父目录。
+    （单文件版同样适用：onefile 的 ``sys.executable`` 也是用户双击的那个真路径。）
+    """
+    if is_frozen():
+        beside = Path(sys.executable).parent / "resources"
+        if beside.is_dir():
+            return beside
+        meipass = Path(getattr(sys, "_MEIPASS", beside.parent))
+        return meipass / "resources"
+    return Path(__file__).resolve().parent.parent / "resources"
+
+
+RESOURCES_DIR = _res_dir()
 
 ROOT = _data_root()
 CONFIG_FILE = ROOT / "config.json"

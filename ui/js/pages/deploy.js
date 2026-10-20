@@ -34,7 +34,7 @@ export function mount(root, ctx) {
         ${icon('info', 17)}
         <div class="grow">
           <strong>演练模式</strong>　走完整流程但不真的下载安装，用来确认每一步都通。
-          关掉后才会联网拉取 NapCat 与 AstrBot。
+          <span id="dry-banner-note">关掉后才会联网拉取 NapCat 与 AstrBot。</span>
         </div>
         <label class="switch">
           <input type="checkbox" id="dry-toggle">
@@ -106,15 +106,59 @@ export function mount(root, ctx) {
   const envList = root.querySelector('#env-list');
   const envTag = root.querySelector('#env-tag');
 
+  /** 离线资源那一行：内置了就说明部署不用联网。 */
+  function offlineRow() {
+    const off = ctx.store.deploy && ctx.store.deploy.offline;
+    if (!off) return '';
+    const have = [];
+    if (off.napcat) have.push('NapCat');
+    if (off.astrbot) have.push('AstrBot');
+    if (off.wheels) have.push(`${off.wheels} 个依赖包`);
+    const missing = [];
+    if (!off.napcat) missing.push('NapCat');
+    if (!off.astrbot) missing.push('AstrBot 源码');
+    if (!off.wheels) missing.push('依赖包');
+    const ready = !!off.ready;
+    const cls = ready ? 'pill--ok' : have.length ? 'pill--warn' : 'pill--bad';
+    const label = ready ? '已内置' : have.length ? '不完整' : '未内置';
+    const detail = ready
+      ? `离线包齐全（${have.join(' + ')}），部署时一步都不用联网`
+      : have.length
+        ? `有 ${have.join(' + ')}，还缺 ${missing.join('、')}，这几步会走网络`
+        : '没有离线包，部署时要联网下载';
+    return `
+      <div class="list__row">
+        <span class="pill ${cls}">${label}</span>
+        <div class="list__main">
+          <strong>离线资源</strong>
+          <span class="truncate" title="${esc(detail)}">${esc(detail)}</span>
+        </div>
+      </div>`;
+  }
+
+  function renderBannerNote() {
+    const note = root.querySelector('#dry-banner-note');
+    if (!note) return;
+    const off = ctx.store.deploy && ctx.store.deploy.offline;
+    if (off && off.ready) {
+      note.textContent = '关掉后从内置的离线包解压安装，不用联网。';
+    } else if (off && off.sources) {
+      note.textContent = '关掉后源码从离线包解压，只有装依赖那步要联网。';
+    } else {
+      note.textContent = '关掉后才会联网拉取 NapCat 与 AstrBot。';
+    }
+  }
+
   function renderEnv() {
+    renderBannerNote();
     const env = ctx.store.env;
     if (!env) {
-      envList.innerHTML = '<p class="muted" style="font-size:12px">读取中…</p>';
+      envList.innerHTML = offlineRow() + '<p class="muted" style="font-size:12px">读取中…</p>';
       envTag.textContent = '—';
       return;
     }
     envTag.textContent = env.ready ? '就绪' : `${(env.missing || []).length} 项待补`;
-    envList.innerHTML = (env.items || []).map((it) => {
+    envList.innerHTML = offlineRow() + (env.items || []).map((it) => {
       const cls = it.status === 'ok' ? 'pill--ok' : it.status === 'warn' ? 'pill--warn' : 'pill--bad';
       const label = it.status === 'ok' ? '就绪' : it.status === 'warn' ? '注意' : '缺失';
       return `
@@ -212,9 +256,12 @@ export function mount(root, ctx) {
 
     if (act === 'start') {
       if (!dryToggle.checked) {
+        const off = ctx.store.deploy && ctx.store.deploy.offline;
         const ok = await confirmDialog({
           title: '确认开始真实部署？',
-          desc: '会联网下载 NapCat、克隆 AstrBot 并安装依赖，可能需要几分钟，期间请保持网络畅通。',
+          desc: off && off.ready
+            ? '这次用内置的离线包，NapCat、AstrBot 源码和依赖都是现成的，解压到本机就行，不用联网。'
+            : '会联网下载 NapCat、拉取 AstrBot 源码并安装依赖，可能需要几分钟，期间请保持网络畅通。',
           confirm: '开始部署',
         });
         if (!ok) return;
@@ -256,7 +303,8 @@ export function mount(root, ctx) {
   return {
     update(store, reason) {
       if (reason === 'deploy') renderSteps();
-      if (reason === 'bootstrap' || reason === 'state' || reason === 'refresh') renderEnv();
+      if (reason === 'bootstrap' || reason === 'state' || reason === 'refresh'
+          || reason === 'deploy') renderEnv();
     },
     destroy() {
       clearInterval(ticker);

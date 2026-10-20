@@ -70,6 +70,47 @@ def stages() -> list[dict[str, Any]]:
     return [dict(s) for s in STAGES]
 
 
+# ---------- 离线资源 ----------
+#
+# 离线版把 NapCat 包、AstrBot 源码包和一堆 wheel 放在 exe 旁边的 resources/ 里。
+# 这么做的理由很实际：GitHub 直连握手超时是常态，pip 装 309 个包要六七分钟，
+# 而这些东西本来就不会变——一次性带在包里，用户点「开始部署」时只做解压。
+
+def local_napcat() -> Path | None:
+    p = paths.RESOURCES_DIR / "napcat.zip"
+    return p if p.is_file() else None
+
+
+def local_astrbot() -> Path | None:
+    p = paths.RESOURCES_DIR / "astrbot.zip"
+    return p if p.is_file() else None
+
+
+def local_wheels() -> Path | None:
+    d = paths.RESOURCES_DIR / "wheels"
+    if d.is_dir() and next(d.glob("*.whl"), None):
+        return d
+    return None
+
+
+def offline() -> dict[str, Any]:
+    """离线包里带了什么。界面拿它决定显示不显示「不用联网」那行提示。"""
+    wheels = paths.RESOURCES_DIR / "wheels"
+    count = len(list(wheels.glob("*.whl"))) if wheels.is_dir() else 0
+    has_napcat = local_napcat() is not None
+    has_astrbot = local_astrbot() is not None
+    return {
+        "dir": str(paths.RESOURCES_DIR),
+        "napcat": has_napcat,
+        "astrbot": has_astrbot,
+        "wheels": count,
+        # 两个源码包都在，装的过程就不用联网了（依赖另说）
+        "sources": has_napcat and has_astrbot,
+        # 三样齐全才算「一步都不用联网」，界面按这个措辞
+        "ready": has_napcat and has_astrbot and count > 0,
+    }
+
+
 def _empty_progress() -> dict[str, Any]:
     return {"key": "", "received": 0, "total": 0, "percent": 0, "speed": 0, "text": ""}
 
@@ -102,7 +143,8 @@ class DeployRunner:
             data = dict(self.state)
             data["steps"] = [dict(s) for s in self.state["steps"]]
             data["progress"] = dict(self.state["progress"])
-            return data
+        data["offline"] = offline()
+        return data
 
     def _set(self, key: str, status: str, detail: str = "", ms: int = 0) -> None:
         with self.lock:
@@ -242,7 +284,12 @@ class DeployRunner:
             parts.append("注意：" + "、".join(warn))
         if not dry_run and "QQ NT 客户端" in missing:
             parts.append("没装 QQ NT，NapCat 启动那步会失败")
-        if not dry_run:
+        off = offline()
+        if off["sources"]:
+            parts.append("离线包已内置，不必联网")
+            if not dry_run and not off["wheels"]:
+                parts.append("但依赖还得从网上装")
+        elif not dry_run:
             src = download.pick_source(napcat_sources(), timeout=8)
             if not src:
                 return False, (
@@ -259,37 +306,50 @@ class DeployRunner:
         (paths.TMP_DIR / "dl").mkdir(parents=True, exist_ok=True)
         return True, f"已准备 {paths.STACK_DIR}"
 
+    def _acquire_zip(self, local: Path | None, urls: list[str], zip_path: Path,
+                     key: str, label: str) -> tuple[Path, str, bool]:
+        """拿到要解压的那个 zip：优先离线包，没有才联网。
+
+        返回 ``(zip 路径, 进度文案里的来源词, 解压完要不要删)``。
+        离线包是常驻资源，解压完不能删。
+        """
+        if local is not None:
+            return local, "离线包", False
+        self._progress(key, 0, 0, "正在挑下载源…")
+        try:
+            download.fetch(urls, zip_path, lambda got, total: self._progress(
+                key, got, total, f"下载 {label} {download.human_size(got)}"
+                + (f" / {download.human_size(total)}" if total else "")))
+        except download.DownloadError as e:
+            raise download.DownloadError(
+                f"{e}；已试过直连与 {max(0, len(urls) - 1)} 个加速镜像，"
+                f"换个网络、填自定义地址，或改用离线版安装包") from e
+        return zip_path, "下载", True
+
     def _stage_napcat(self, dry_run: bool) -> tuple[bool, str]:
         target = paths.STACK_DIR / "napcat"
         existing = _napcat_ready(target)
         if existing:
             return True, f"已就绪：{existing}"
+        local = local_napcat()
         if dry_run:
-            return True, "演练模式：跳过下载（约 120 MB）"
+            return True, ("演练模式：解压离线包，不用联网" if local
+                          else "演练模式：跳过下载（约 120 MB）")
 
-        url = napcat_sources()
-        zip_path = paths.TMP_DIR / "dl" / "napcat.zip"
-        self._progress("napcat", 0, 0, "正在挑下载源…")
-        detail_txt = "下载 NapCat"
-        try:
-            download.fetch(url, zip_path, lambda got, total: self._progress(
-                "napcat", got, total, f"{detail_txt} {download.human_size(got)}"
-                + (f" / {download.human_size(total)}" if total else "")))
-        except download.DownloadError as e:
-            raise download.DownloadError(
-                f"{e}；已试过直连与 "
-                f"{max(0, len(url) - 1)} 个加速镜像，换个网络或填自定义地址再试") from e
+        zip_path, source_txt, drop = self._acquire_zip(
+            local, napcat_sources(), paths.TMP_DIR / "dl" / "napcat.zip", "napcat", "NapCat")
 
-        self._progress("napcat", 100, 100, "正在解压…")
+        self._progress("napcat", 100, 100, f"正在解压{source_txt}…")
         download.extract_zip(zip_path, target, lambda i, n: self._progress(
             "napcat", i, n, f"解压 {i}/{n}"))
-        zip_path.unlink(missing_ok=True)
+        if drop:
+            zip_path.unlink(missing_ok=True)
 
         ready = _napcat_ready(target)
         if not ready:
             return False, "解压完了但没找到启动器，检查压缩包内容"
         size = download.dir_size(target) / 1024 / 1024
-        return True, f"已就绪（{ready}，{size:.0f} MB）"
+        return True, f"已就绪（{ready}，{size:.0f} MB，来自{source_txt}）"
 
     def _stage_astrbot(self, dry_run: bool) -> tuple[bool, str]:
         target = paths.STACK_DIR / "astrbot"
@@ -299,13 +359,16 @@ class DeployRunner:
             keep = {".git", "data", "venv"}
             if any(p.name not in keep for p in target.iterdir()):
                 return False, "目录里已有别的内容，请先清空 stack/astrbot"
+        local = local_astrbot()
         if dry_run:
-            return True, "演练模式：跳过下载（源码包约 8 MB）"
+            return True, ("演练模式：解压离线包，不用联网" if local
+                          else "演练模式：跳过下载（源码包约 8 MB）")
 
         method = (config.get("deploy.astrbotMethod") or "zip").strip().lower()
         target.mkdir(parents=True, exist_ok=True)
 
-        if method == "git":
+        # 有离线包就别走 git 了——git 还要连 GitHub，正是离线包要躲开的东西
+        if method == "git" and local is None:
             git = envcheck.check_git()
             if not git["ok"]:
                 return False, "没有 Git，改成「下载压缩包」方式再试"
@@ -318,23 +381,20 @@ class DeployRunner:
                 return False, (r.stderr or r.stdout or "git clone 失败")[-400:]
             return True, f"已克隆到 {target}"
 
-        url = astrbot_sources()
-        zip_path = paths.TMP_DIR / "dl" / "astrbot.zip"
-        self._progress("astrbot", 0, 0, "正在下载 AstrBot…")
-        download.fetch(url, zip_path, lambda got, total: self._progress(
-            "astrbot", got, total, f"下载 AstrBot {download.human_size(got)}"
-            + (f" / {download.human_size(total)}" if total else "")))
+        zip_path, source_txt, drop = self._acquire_zip(
+            local, astrbot_sources(), paths.TMP_DIR / "dl" / "astrbot.zip", "astrbot", "AstrBot")
 
-        self._progress("astrbot", 100, 100, "正在解压…")
+        self._progress("astrbot", 100, 100, f"正在解压{source_txt}…")
         download.extract_zip(zip_path, target, lambda i, n: self._progress(
             "astrbot", i, n, f"解压 {i}/{n}"))
-        zip_path.unlink(missing_ok=True)
+        if drop:
+            zip_path.unlink(missing_ok=True)
         if not (target / "main.py").exists():
             found = download.find_dir(target, ("main.py",))
             if not found:
                 return False, "解压完了但没找到 main.py"
             target = found
-        return True, f"已就绪（{target}）"
+        return True, f"已就绪（{target}，来自{source_txt}）"
 
     def _stage_deps(self, dry_run: bool) -> tuple[bool, str]:
         target = paths.STACK_DIR / "astrbot"
@@ -348,17 +408,39 @@ class DeployRunner:
 
         py = self._ensure_venv()
         if not py:
-            return False, "虚拟环境建不起来，检查 Python 安装是否完整"
-        self._progress("deps", 0, 0, "正在安装依赖，可能要几分钟…")
+            base, _ver = envcheck.find_python()
+            if not base:
+                return False, ("找不到可用的 Python 解释器。装一个 Python 3.10 以上"
+                               "（勾选 Add to PATH），或者用目录版里的 resources 重装一次")
+            return False, f"虚拟环境建不起来（用的是 {base}），看看它的安装是否完整"
+        wheels = local_wheels()
         index = (config.get("deploy.pipIndex") or "").strip()
         argv = [str(py), "-m", "pip", "install", "-r", str(req),
                 "--disable-pip-version-check", "--no-input", "--progress-bar", "off"]
-        if index:
-            argv += ["-i", index]
+        if wheels is not None:
+            argv += ["--no-index", "--find-links", str(wheels)]
+            self._progress("deps", 0, 0, "正在从离线包安装依赖…")
+        else:
+            if index:
+                argv += ["-i", index]
+            self._progress("deps", 0, 0, "正在安装依赖，可能要几分钟…")
         code, tail = self._run_stream(argv, "deps", str(target))
+
+        if code != 0 and wheels is not None:
+            # 离线 wheel 是按打包时的 Python 版本挑的（cp312）。本机若是 3.13 之类
+            # 就装不上——别把用户卡死，退回联网装，并说清楚为什么。
+            self._progress("deps", 0, 0, "离线依赖装不上（Python 版本可能不同），改走网络…")
+            retry = [str(py), "-m", "pip", "install", "-r", str(req),
+                     "--disable-pip-version-check", "--no-input", "--progress-bar", "off"]
+            if index:
+                retry += ["-i", index]
+            code, tail = self._run_stream(retry, "deps", str(target))
+            if code == 0:
+                return True, "依赖装好了（离线包版本对不上，这次走了网络）"
+
         if code != 0:
             return False, (tail or "pip 失败")[-600:].replace("\n", " ")
-        return True, "依赖安装完成"
+        return True, "依赖安装完成" + ("（来自离线包）" if wheels is not None else "")
 
     def _run_stream(self, argv: list[str], key: str, cwd: str) -> tuple[int, str]:
         """跑子进程并把最后一行输出当成进度推给界面，避免几分钟一片死寂。"""
@@ -491,13 +573,14 @@ class DeployRunner:
         if py.exists():
             return py
         self._progress("deps", 0, 0, "正在创建虚拟环境…")
-        r = subprocess.run([sys.executable, "-m", "venv", str(venv)],
+        # 打包成 exe 后 sys.executable 是 AstrBotPC.exe，它不认 -m venv
+        base, _ver = envcheck.find_python()
+        if not base:
+            return None
+        r = subprocess.run([base, "-m", "venv", str(venv)],
                            capture_output=True, text=True, timeout=300)
         if r.returncode != 0 or not py.exists():
             return None
-        subprocess.run([str(py), "-m", "pip", "install", "--upgrade", "pip",
-                        "--disable-pip-version-check", "--no-input"],
-                       capture_output=True, text=True, timeout=600)
         return py
 
 

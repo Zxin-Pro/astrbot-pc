@@ -14,6 +14,9 @@ build/build/
 # 本地运行数据（配置、日志、备份、截图）
 .devdata/
 
+# 离线部署资源（NapCat + AstrBot + wheel，几百 MB，靠 Release 分发，不进 git）
+resources/
+
 # 一次性排查脚本（下划线开头的是临时探针，不进仓库）
 tools/_*.py
 
@@ -21,3 +24,6 @@ tools/_*.py
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# 离线包验证截图
+shots-offline/

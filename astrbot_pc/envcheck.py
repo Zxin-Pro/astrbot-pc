@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import glob
 import os
 import re
 import shutil
@@ -58,15 +59,73 @@ def _run(cmd: list[str], timeout: float = 6.0) -> tuple[int, str]:
         return -1, f"{type(e).__name__}: {e}"
 
 
+_PY_PROBE = ("import sys;print(sys.executable);"
+             "print('%d.%d.%d' % sys.version_info[:3])")
+
+
+def find_python() -> tuple[str, tuple[int, int, int]]:
+    """找一个能跑 ``-m venv`` 的真 Python，返回 (路径, 版本号)。
+
+    打包成 exe 之后 ``sys.executable`` 是 ``AstrBotPC.exe``：它本身就是个
+    Python 程序，但对外不认 ``-m venv`` 这类参数，建虚拟环境必须回系统里找。
+    找不到就返回 ``("", (0,0,0))``，上层据此给出能照着做的提示。
+    """
+    if not paths.is_frozen():
+        return sys.executable, tuple(sys.version_info[:3])  # type: ignore[return-value]
+
+    def probe(argv: list[str]) -> tuple[str, tuple[int, int, int]] | None:
+        code, out = _run(argv, timeout=20)
+        if code != 0 or not out:
+            return None
+        lines = [x.strip() for x in out.splitlines() if x.strip()]
+        if len(lines) < 2 or not Path(lines[0]).is_file():
+            return None
+        try:
+            ver = tuple(int(x) for x in lines[1].split(".")[:3])
+        except ValueError:
+            return None
+        if len(ver) != 3:
+            return None
+        return lines[0], ver  # type: ignore[return-value]
+
+    # py 启动器最可靠（它认得所有已安装的版本），其次是 PATH 里的 python
+    for argv in (["py", "-3", "-c", _PY_PROBE], ["python", "-c", _PY_PROBE]):
+        hit = probe(argv)
+        if hit:
+            return hit
+
+    for pat in (
+        r"C:\Program Files\Python3*\python.exe",
+        r"C:\Program Files (x86)\Python3*\python.exe",
+        str(Path.home() / "AppData" / "Local" / "Programs" / "Python" / "Python3*" / "python.exe"),
+    ):
+        for exe in sorted(glob.glob(pat), reverse=True):
+            hit = probe([exe, "-c", _PY_PROBE])
+            if hit:
+                return hit
+
+    return "", (0, 0, 0)
+
+
 def check_python() -> dict[str, Any]:
-    ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    ok = sys.version_info >= (3, 10)
+    exe, ver_tuple = find_python()
+    if not exe:
+        return {
+            "key": "python",
+            "name": "Python 运行时",
+            "status": "missing",
+            "detail": "没找到能用的 Python。装一个 3.10 以上版本（勾选 Add to PATH）再回来",
+            "path": "",
+            "required": True,
+        }
+    ver = ".".join(str(x) for x in ver_tuple)
+    ok = ver_tuple >= (3, 10)
     return {
         "key": "python",
         "name": "Python 运行时",
         "status": "ok" if ok else "warn",
-        "detail": f"{ver}（{sys.executable}）" if ok else f"{ver}，AstrBot 需要 ≥ 3.10",
-        "path": sys.executable,
+        "detail": f"{ver}（{exe}）" if ok else f"{ver}，AstrBot 需要 ≥ 3.10",
+        "path": exe,
         "required": True,
     }
 
@@ -201,7 +260,7 @@ def check_astrbot() -> dict[str, Any]:
             "key": "astrbot",
             "name": "AstrBot",
             "status": "missing",
-            "detail": "未安装。部署向导会克隆仓库并装依赖到 stack\\astrbot",
+            "detail": "未安装。部署向导会拉取源码并装依赖到 stack\\astrbot",
             "path": "",
             "required": True,
         }
@@ -300,6 +359,24 @@ def snapshot(force: bool = False, ttl: float = 20.0) -> dict[str, Any]:
         return _CACHE["data"]
 
     items = [check_python(), check_git(), check_qq(), check_napcat(), check_astrbot(), check_disk()]
+
+    # 有离线包就说清楚「不用联网」，别让用户以为还得连 GitHub。
+    # 这里才 import deploy：deploy 在模块层就 import 了 envcheck，放函数里避免循环。
+    try:
+        from .deploy import offline as _offline
+
+        off = _offline()
+    except Exception:
+        off = {}
+    if off.get("napcat") or off.get("astrbot"):
+        for it in items:
+            if it["status"] != "missing":
+                continue
+            if it["key"] == "napcat" and off.get("napcat"):
+                it["detail"] = "未安装。部署向导会从内置离线包解压到 stack\\napcat，不用联网"
+            elif it["key"] == "astrbot" and off.get("astrbot"):
+                it["detail"] = "未安装。部署向导会从内置离线包解压源码到 stack\\astrbot，不用联网"
+
     required_missing = [i for i in items if i["required"] and i["status"] == "missing"]
     ready = len(required_missing) == 0
     data = {

@@ -17,9 +17,12 @@ import urllib.request
 from pathlib import Path
 
 REPO = "Zxin-Pro/astrbot-pc"
-TAG = "pc-v1.1.1"
-NAME = "烛之控制台 v1.1.1 · PC 端"
-ZIP = Path(__file__).resolve().parent.parent / "dist" / "AstrBotPC-1.1.1-win64.zip"
+TAG = "pc-v1.2.0"
+NAME = "烛之控制台 v1.2.0 · PC 端"
+DIST = Path(__file__).resolve().parent.parent / "dist"
+ZIP = DIST / "AstrBotPC-1.2.0-win64.zip"
+OFFLINE = DIST / "AstrBotPC-1.2.0-win64-offline.zip"
+SINGLE = DIST / "AstrBotPC-1.2.0-win64-single.exe"
 
 TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 HEADERS = {
@@ -28,20 +31,30 @@ HEADERS = {
     "Accept": "application/vnd.github+json",
 }
 
-BODY = """## 烛之控制台 v1.1.1 · AstrBot 烛版 PC 端
+BODY = """## 烛之控制台 v1.2.0 · AstrBot 烛版 PC 端
 
 把手机上那套「QQ 机器人一键包」搬到 Windows：一个自绘界面的桌面客户端，负责装 NapCat 与 AstrBot、看着两个进程、扫码登录、翻日志、备份与恢复。
 
 ### 下载
 
-- **AstrBotPC-1.1.1-win64.zip**（约 22 MB）——解压到任意目录，双击 `AstrBotPC.exe`
-- **AstrBotPC-1.1.1-win64-single.exe**——单文件版，拷一个文件就能跑（冷启动约 2 秒）
+- **AstrBotPC-1.2.0-win64-offline.zip**（约 350 MB）——**推荐**。离线包，里面带着 NapCat、AstrBot 源码和全部依赖 wheel，解压后点「开始部署」全程不联网
+- **AstrBotPC-1.2.0-win64.zip**（约 22 MB）——小包。解压到任意目录双击 `AstrBotPC.exe`，部署时联网下载（国内直连 GitHub 常握手超时，向导会自动换加速镜像）
+- **AstrBotPC-1.2.0-win64-single.exe**（约 22 MB）——单文件版，拷一个文件就能跑（冷启动约 2 秒），部署时联网下载
 - 不需要装 Python；Windows 10/11 自带 WebView2，更老的系统补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 - 绿色版：删目录即卸载，配置与日志写在 `%LOCALAPPDATA%\\AstrBotPC`
 
+### 1.2.0：离线包，装的时候一步网都不用联
+
+- 新增离线版安装包：`resources\\` 里预置 NapCat、AstrBot 源码和全部依赖 wheel（约 350 MB）
+- 部署向导先看 `resources\\`：有就直接解压，没有才联网下载。两种包是同一份程序，不用改设置
+- 「部署」页的环境体检多一行「离线资源」，一眼看出这次会不会联网
+- 依赖改成 `pip install --no-index --find-links`，从内置 wheel 装
+- wheel 是按打包时的 Python（3.12 / win_amd64）挑的；万一用户机器版本不同装不上，会自动退回联网安装并说明原因，不会卡死
+- 离线资源摆在 `AstrBotPC.exe` 旁边的 `resources\\`，用户看得见也换得掉，不塞进 exe 内部
+
 ### 1.1.1：图标换成手机版那张
 
-- 程序图标、任务栏、托盘、网页标签页统一用手机版同一张插画（`ui/assets/app-icon.png`）
+- 程序图标、任务栏、托盘、网页标签页统一用手机版同一张插画
 - 小尺寸（16/24/32）单独按脸部裁一张再缩——整张画缩到这个尺寸只剩一块深色
 - 托盘图标不再手绘，直接读同一份资源；文件缺失时才退回手绘兜底
 - 顺带：标题栏左边那个蓝色方块也换成同一个人
@@ -72,7 +85,7 @@ BODY = """## 烛之控制台 v1.1.1 · AstrBot 烛版 PC 端
 
 - NapCat 首次登录需要人工扫码，向导只负责把二维码页面准备好
 - 更新只提示不自动覆盖安装（本机程序自替换风险太高）
-- 第一次安装 AstrBot 依赖要 5–15 分钟，默认走清华 PyPI 镜像
+- 离线版的 wheel 绑定打包时的 Python 版本，换 Python 大版本的用户会走联网安装
 
 烛心.xyz · QQ 群 1127997343
 """
@@ -109,17 +122,17 @@ def ensure_release() -> dict:
     return rel
 
 
-def upload(release_id: int) -> None:
-    if not ZIP.is_file():
-        raise SystemExit(f"找不到发布包：{ZIP}，先跑 tools/build_exe.ps1")
+def upload(release_id: int, path: Path) -> None:
+    if not path.is_file():
+        raise SystemExit(f"找不到发布包：{path}，先跑 tools/build_exe.ps1")
 
-    payload = ZIP.read_bytes()
-    name = ZIP.name
+    payload = path.read_bytes()
+    name = path.name
     for host in ("https://uploads.github.com", "https://api.github.com"):
         url = f"{host}/repos/{REPO}/releases/{release_id}/assets?name={name}"
         print(f"uploading {name} ({len(payload) / 1024 / 1024:.1f} MB) -> {host}")
         try:
-            res = call("POST", url, raw=payload, ctype="application/zip", timeout=600)
+            res = call("POST", url, raw=payload, ctype="application/octet-stream", timeout=1800)
             print(f"asset id={res['id']} size={res['size']} url={res['browser_download_url']}")
             return
         except urllib.error.HTTPError as e:
@@ -130,7 +143,7 @@ def upload(release_id: int) -> None:
                 return
         except Exception as e:
             print(f"  {type(e).__name__}: {e}", file=sys.stderr)
-    raise SystemExit("资产上传失败")
+    raise SystemExit(f"资产上传失败：{name}")
 
 
 def main() -> int:
@@ -138,7 +151,14 @@ def main() -> int:
         print("GITHUB_TOKEN 没有设置", file=sys.stderr)
         return 2
     rel = ensure_release()
-    upload(int(rel["id"]))
+    rid = int(rel["id"])
+    # 顺序有讲究：小包先传，离线包（几百 MB）最后传，中途断了也不影响别人下载。
+    # 单文件版继续用 tools/upload_asset.py 补，避免这里一次跑太久。
+    for path in (ZIP, OFFLINE):
+        if path.is_file():
+            upload(rid, path)
+        else:
+            print(f"跳过（没有这个文件）：{path.name}")
     print("RELEASE_OK")
     return 0
 

@@ -12,12 +12,15 @@
 
 去 [Releases](https://github.com/Zxin-Pro/astrbot-pc/releases) 下任意一个：
 
-| 文件 | 用法 |
-| --- | --- |
-| `AstrBotPC-1.1.1-win64-single.exe` | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒 |
-| `AstrBotPC-1.1.1-win64.zip` | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快 |
+| 文件 | 大小 | 用法 |
+| --- | --- | --- |
+| `AstrBotPC-1.2.0-win64-offline.zip` | 约 260 MB | **离线版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码与全部依赖 wheel，部署全程不用联网 |
+| `AstrBotPC-1.2.0-win64.zip` | 约 22 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载 |
+| `AstrBotPC-1.2.0-win64-single.exe` | 约 22 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒。部署时联网下载 |
 
 不需要装 Python；Windows 10/11 自带 WebView2，更老的系统要补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。程序是绿色版，删目录即卸载（单文件版删 exe），设置与日志都写在 `%LOCALAPPDATA%\AstrBotPC`。
+
+离线版和普通版是同一份程序，区别只在 `resources\` 这个文件夹。删掉它就是普通版，想升级也是重新下一次离线包。
 
 ### 从源码跑
 
@@ -139,16 +142,21 @@ astrbot-pc/
 │  └─ js/           main / router / store / api / components / charts / icons / util / glass
 │     └─ pages/     dashboard / deploy / services / logs / login / instances / backups / settings
 ├─ tools/           冒烟截图、打包、图标生成与调试脚本
-│  ├─ build_exe.ps1 一条命令出 exe + 发布 zip
-│  ├─ release.py    建 GitHub Release 并上传 zip
+│  ├─ build_exe.ps1 一条命令出 exe + 发布 zip（含离线版）
+│  ├─ build_offline.py 把 NapCat / AstrBot 源码 / wheel 收进 resources\
+│  ├─ release.py    建 GitHub Release 并上传 zip 与离线包
 │  ├─ push_api.py   只放行 api.github.com 时的推送通道
-│  ├─ make_icon.py  从 favicon.svg 渲染多尺寸 .ico
+│  ├─ make_icon.py  从一张 PNG 出多尺寸 .ico 与 favicon
 │  ├─ smoke.py      八页零报错冒烟
 │  ├─ probe_glass.py         玻璃/实色 × 深浅 的全部截图
 │  ├─ probe_glass_qa.py      卡片实际渲染色算对比度 + 滚动帧率
 │  ├─ probe_glass_overlay.py 弹层、吐司、降低透明度与降低动效
 │  ├─ probe_glass_narrow.py  390px 窄屏溢出
 │  └─ probe_update.py 用假数据验证版本 chip
+├─ resources/       离线部署资源（git 忽略，打包进离线版）
+│  ├─ napcat.zip    NapCat.Shell.Windows.Node（约 118 MB）
+│  ├─ astrbot.zip   AstrBot 源码包（约 8 MB）
+│  └─ wheels/       依赖 wheel（约 300 MB）
 ├─ build/           app.ico、version_info.txt（打包时用，别删）
 └─ docs/            设计说明
 ```
@@ -156,23 +164,31 @@ astrbot-pc/
 打包：
 
 ```powershell
+# 先收离线资源（不做这步就只能出联网版）
+python tools\build_offline.py --check      # 看看缺什么
+python tools\build_offline.py              # 缺什么下什么
+
 powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
-# → dist\AstrBotPC\AstrBotPC.exe                 目录版
-# → dist\AstrBotPC-1.1.1-win64.zip               目录版压缩包
-# → dist\AstrBotPC-1.1.1-win64-single.exe        单文件版
+# → dist\AstrBotPC\AstrBotPC.exe                     目录版
+# → dist\AstrBotPC-1.2.0-win64.zip                   目录版压缩包（22 MB，联网装）
+# → dist\AstrBotPC-1.2.0-win64-single.exe            单文件版（22 MB，联网装）
+# → dist\AstrBotPC-1.2.0-win64-offline.zip           离线版（260 MB，不联网）
 ```
+
+没有 `resources\` 时最后一行会自动跳过，其余产物不变。
 
 ---
 
 ## 五、发版流程
 
-1. 改版本号：`astrbot_pc/paths.py` 的 `APP_VERSION`、`build/version_info.txt`、`tools/release.py` 里的 `TAG` 与 `ZIP`
+1. 改版本号：`astrbot_pc/paths.py` 的 `APP_VERSION`、`build/version_info.txt`、`tools/release.py` 里的 `TAG` / `ZIP` / `OFFLINE` / `SINGLE`、`tools/build_exe.ps1` 的 `$Version`
 2. 打包：`powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1`
 3. 发布：
 
    ```powershell
    set GITHUB_TOKEN=ghp_xxx
-   python tools\release.py        # 建 pc-v1.1.1 Release + 上传 zip
+   python tools\release.py        # 建 pc-v1.2.0 Release + 上传 zip 与离线包
+   python tools\upload_asset.py dist\AstrBotPC-1.2.0-win64-single.exe --tag pc-v1.2.0
    ```
 
    tag 必须用 `pc-v<版本>` 或资产名带 `PC`——`update.py` 只认这两种，否则客户端不会提示更新。
@@ -231,18 +247,35 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
 | 步骤 | 实际动作 |
 | --- | --- |
-| 环境检查 | 读 Python / Git / QQ NT / 磁盘；真实模式额外探一次 `github.com` 通不通 |
+| 环境检查 | 读 Python / Git / QQ NT / 磁盘；真实模式额外探一次下载源通不通（**有离线包时跳过**） |
 | 准备目录 | 建 `stack/` `logs/` `backups/` `tmp/` |
-| 获取 NapCat | 从 GitHub Release 拉 `NapCat.Shell.Windows.Node.zip`（约 118 MB，自带 node.exe），解压到 `stack/napcat`，自动剥掉压缩包顶层目录 |
-| 获取 AstrBot | 下载 AstrBot master 源码包解压到 `stack/astrbot`（设置里可改成 git clone） |
-| 安装依赖 | 建 `stack/venv` 独立虚拟环境，`pip install -r requirements.txt`，实时把 pip 最后一行推给进度条 |
+| 获取 NapCat | 有 `resources\napcat.zip` 就直接解压；否则从 GitHub Release 拉 `NapCat.Shell.Windows.Node.zip`（约 118 MB，自带 node.exe）。解压到 `stack/napcat`，自动剥掉压缩包顶层目录 |
+| 获取 AstrBot | 有 `resources\astrbot.zip` 就解压；否则下载 AstrBot master 源码包（设置里可改成 git clone，有离线包时不会走 git） |
+| 安装依赖 | 建 `stack/venv` 独立虚拟环境。有 `resources\wheels` 时用 `pip install --no-index --find-links`，否则 `pip install -r requirements.txt`。实时把 pip 最后一行推给进度条 |
 | 写入配置 | 写 `stack/napcat/config/onebot11.json` 的 `websocketClients`，以及 `stack/astrbot/data/cmd_config.json` 的 `dashboard` 与 `platform`（aiocqhttp 反向 WS）。两个文件名都不能改：NapCat 运行时先找 `onebot11_<QQ号>.json`、没有才读 `onebot11.json` 再另存；AstrBot 只认 `data/cmd_config.json`，写进 `data/config/` 会被当作不存在 |
 | 启动 NapCat | 拉起进程并等 WebUI 端口（最多 120s） |
 | 启动 AstrBot | 拉起进程并等控制台端口（最多 180s） |
 
+### 离线资源怎么起作用
+
+`astrbot_pc/paths.py` 的 `RESOURCES_DIR` 认 `AstrBotPC.exe` 同级的 `resources\`（onedir 的 `_MEIPASS` 指向 `_internal/`，所以不能按它找）。里面有这三样就算齐：
+
+```
+resources/
+├─ napcat.zip      NapCat.Shell.Windows.Node
+├─ astrbot.zip     AstrBot 源码
+└─ wheels/         *.whl
+```
+
+「部署」页的环境体检会多一行「离线资源」，写明这次会不会联网。缺一样也不报错，缺的那步照常走网络。
+
+wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。用户机器上 Python 大版本不同时装不上，代码会自动退回联网 `pip install` 并在结果里写明「离线包版本对不上，这次走了网络」，不会卡死在这一步。
+
+部署要建虚拟环境，这一步得用**真的 Python 解释器**。打包成 exe 之后 `sys.executable` 指向 `AstrBotPC.exe` 本身，它不认 `-m venv`——所以程序会去系统里找：先试 `py -3`，再试 PATH 里的 `python`，最后扫常见安装目录。完全找不到时，环境体检会直接把「Python 运行时」标成缺失，提示先装 Python 3.10 以上。
+
 下载走断点续传（`Range`），失败自动退避重试两次；进度按 0.25s 节流推到界面，显示已下多少 / 总共多少 / 当前速度。
 
-依赖安装默认走**清华 PyPI 镜像**，设置页可换成阿里云、腾讯云或官方源。国内网络下装 AstrBot 依赖通常要 5–15 分钟，这段时间进度条会一直滚 pip 的最新一行。
+依赖安装默认走**清华 PyPI 镜像**，设置页可换成阿里云、腾讯云或官方源。国内网络下装 AstrBot 依赖通常要 5–15 分钟，这段时间进度条会一直滚 pip 的最新一行。走离线包时实测约 3 分钟。
 
 ---
 
@@ -261,7 +294,8 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 - 部署向导八步全部实跑通过：真下载 NapCat 与 AstrBot、装依赖、写 OneBot 与 AstrBot 配置；写的是 AstrBot 真正会读的 `data/cmd_config.json` 与 NapCat 回退读的 `onebot11.json`
 - 下载链路：实测选源（直连 + 三个加速镜像并发测速后取最快）、断点续传、半截包不算成功、20 秒没新数据就换源
 - 界面访问范围：「仅本机」/「允许局域网」真的会改监听地址（重启界面生效）
-- exe 已发布：<https://github.com/Zxin-Pro/astrbot-pc/releases>（目录版 zip 约 22 MB，另有单文件 exe）
+- 离线包：`resources\` 里带 NapCat、AstrBot 源码与依赖 wheel，部署全程不联网；缺哪样就那一步走网络，不影响其它步
+- exe 已发布：<https://github.com/Zxin-Pro/astrbot-pc/releases>（离线版约 260 MB，普通版约 22 MB，另有单文件 exe）
 - 液态玻璃界面：深浅两套主题都有；底图、玻璃、颗粒三层叠出透色，关掉即回到原实色界面
 - Playwright 冒烟：八页零控制台报错、零失败请求，390px 窄屏不溢出；深色主题同样过一遍
 
@@ -273,6 +307,18 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 ---
 
 ## 九、更新日志
+
+### 1.2.0
+
+离线包，装的时候一步网都不用联：
+
+- **新增离线版安装包**：`AstrBotPC-1.2.0-win64-offline.zip` 里带 `resources\`，预置 NapCat、AstrBot 源码和全部依赖 wheel（约 260 MB）。解压后点「开始部署」，从第一个文件到 pip 装完都不联网。
+- **两种包是同一份程序**：`paths.RESOURCES_DIR` 认 exe 同级的 `resources\`；有就解压，没有就照旧联网下载。删掉 `resources\` 就等于退回普通版。
+- **不强塞进 exe**：单文件版仍是 22 MB。260 MB 塞进去每次启动都得往临时目录解压，冷启动几十秒，得不偿失。
+- **环境体检多一行**：部署页右侧「环境体检」上方显示「离线资源」，写明内置了什么、这次会不会联网；缺的部分照常走网络。
+- **依赖走本地仓库**：`pip install --no-index --find-links <wheels>`。万一用户 Python 大版本和打包时不同（wheel 是 cp312 / win_amd64），自动退回联网安装并注明原因，不会卡死在第五步。
+- **演练模式文案跟着变**：有离线包时，确认弹层和横幅改成「从内置离线包解压，不用联网」。
+- **修 exe 建不出虚拟环境**：打包后 `sys.executable` 是 `AstrBotPC.exe`，`-m venv` 直接被拒，第五步永远失败。现在先找系统里的真 Python（`py -3` → PATH 的 `python` → 常见安装目录），环境体检显示的也是它而不是 exe 自己。
 
 ### 1.1.1
 
@@ -340,8 +386,14 @@ WebView2 运行时缺失时 pywebview 起不来。装 [WebView2 Runtime](https:/
 **托盘图标不见了？**
 Windows 会把不常用的图标折叠进「^」里，点开找一下。如果连折叠区都没有，多半是 `pystray` 没装上——用 `run-console.bat` 看有没有 `pip install -r requirements.txt` 的报错。
 
-**「检查更新」说 PC 端还没有发布版本？**
-正常。同一个仓库的最新 Release 目前是手机版 `AstrBot-1.1.31.apk`，桌面版还没发过包。程序只认 `pc-*` 的 tag 或名字带 `PC` 的资产，不会拿手机版冒充桌面版。
+**「检查更新」说没有新版本？**
+说明你已经在最新版。程序只认 `pc-*` 的 tag 或名字带 `PC` 的资产，不会拿手机版 APK 冒充桌面版；查不到 Release 时会照实说「桌面版会单独出包」。
+
+**下载 260 MB 的离线包太慢？**
+下 22 MB 的普通版也一样能用，只是部署那一步要联网拉 NapCat（约 118 MB）和 AstrBot 依赖。国内直连 GitHub 经常握手超时，向导会自动换加速镜像，也可以在「设置 → 部署」里关掉加速或填自己的地址。
+
+**离线版装依赖还是走了网络？**
+wheel 是按打包时的 Python（3.12 / win_amd64）挑的。你机器上如果是 3.13 之类，那些 wheel 装不上，程序会自动退回联网安装，日志里会写「离线包版本对不上，这次走了网络」。
 
 ---
 
