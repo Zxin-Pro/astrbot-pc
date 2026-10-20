@@ -19,6 +19,7 @@ DEFAULTS: dict[str, Any] = {
         "autoStart": False,       # 开机自启
         "minimizeToTray": True,
         "checkUpdate": True,
+        "glass": True,            # 液态玻璃材质；老显卡可以关掉，界面回到实色
         "lastTab": "dashboard",
     },
     "server": {

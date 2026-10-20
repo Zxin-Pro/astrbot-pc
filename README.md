@@ -14,8 +14,8 @@
 
 | 文件 | 用法 |
 | --- | --- |
-| `AstrBotPC-1.0.1-win64-single.exe` | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒 |
-| `AstrBotPC-1.0.1-win64.zip` | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快 |
+| `AstrBotPC-1.1.0-win64-single.exe` | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒 |
+| `AstrBotPC-1.1.0-win64.zip` | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快 |
 
 不需要装 Python；Windows 10/11 自带 WebView2，更老的系统要补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。程序是绿色版，删目录即卸载（单文件版删 exe），设置与日志都写在 `%LOCALAPPDATA%\AstrBotPC`。
 
@@ -134,9 +134,9 @@ astrbot-pc/
 │  ├─ update.py     检查更新：只认 PC 端发布，30 分钟缓存
 │  └─ shell.py      pywebview 无边框窗口（窗口引用必须下划线开头，见下方说明）
 ├─ ui/
-│  ├─ index.html    外壳：标题栏、侧栏、路由出口、弹层与命令面板
-│  ├─ css/          tokens.css（设计变量）+ app.css
-│  └─ js/           main / router / store / api / components / charts / icons / util
+│  ├─ index.html    外壳：标题栏、侧栏、路由出口、底图、弹层与命令面板
+│  ├─ css/          tokens.css（设计变量）+ app.css（布局与组件）+ glass.css（液态玻璃覆盖层）
+│  └─ js/           main / router / store / api / components / charts / icons / util / glass
 │     └─ pages/     dashboard / deploy / services / logs / login / instances / backups / settings
 ├─ tools/           冒烟截图、打包、图标生成与调试脚本
 │  ├─ build_exe.ps1 一条命令出 exe + 发布 zip
@@ -144,6 +144,10 @@ astrbot-pc/
 │  ├─ push_api.py   只放行 api.github.com 时的推送通道
 │  ├─ make_icon.py  从 favicon.svg 渲染多尺寸 .ico
 │  ├─ smoke.py      八页零报错冒烟
+│  ├─ probe_glass.py         玻璃/实色 × 深浅 的全部截图
+│  ├─ probe_glass_qa.py      卡片实际渲染色算对比度 + 滚动帧率
+│  ├─ probe_glass_overlay.py 弹层、吐司、降低透明度与降低动效
+│  ├─ probe_glass_narrow.py  390px 窄屏溢出
 │  └─ probe_update.py 用假数据验证版本 chip
 ├─ build/           app.ico、version_info.txt（打包时用，别删）
 └─ docs/            设计说明
@@ -154,8 +158,8 @@ astrbot-pc/
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 # → dist\AstrBotPC\AstrBotPC.exe                 目录版
-# → dist\AstrBotPC-1.0.1-win64.zip               目录版压缩包
-# → dist\AstrBotPC-1.0.1-win64-single.exe        单文件版
+# → dist\AstrBotPC-1.1.0-win64.zip               目录版压缩包
+# → dist\AstrBotPC-1.1.0-win64-single.exe        单文件版
 ```
 
 ---
@@ -168,7 +172,7 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
    ```powershell
    set GITHUB_TOKEN=ghp_xxx
-   python tools\release.py        # 建 pc-v1.0.1 Release + 上传 zip
+   python tools\release.py        # 建 pc-v1.1.0 Release + 上传 zip
    ```
 
    tag 必须用 `pc-v<版本>` 或资产名带 `PC`——`update.py` 只认这两种，否则客户端不会提示更新。
@@ -203,6 +207,22 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 - 入场 0.4s、悬停 120ms；`prefers-reduced-motion` 下关闭位移与循环动画
 - 深浅两套主题同一份变量，`data-theme` 切换即可
 
+### 液态玻璃
+
+界面默认是一层液态玻璃（Apple Liquid Glass 风格）。开关在「设置 → 外观 → 液态玻璃材质」，状态写在 `<html data-glass>` 上。
+
+要成立必须满足三件事，缺一层就会「糊成白卡」：
+
+1. **背后得有东西**——`index.html` 里那层固定底图 `.backdrop`（四个大模糊色块）加一层极细颗粒 `.grain`。玻璃只是窗口，窗后没景就只剩白。
+2. **玻璃只给面板**——侧栏、标题栏、卡片、弹层、吐司用玻璃；面板里的面板（服务卡片的指标块、日志正文、二维码舞台）保持薄实色。玻璃叠玻璃会互相糊掉。
+3. **文字色阶要跟着压深**——玻璃会把背景提亮，`--ink-3` 在浅色玻璃上只剩 3.2:1。现在浅色压到 `#475569`，深色压到 `#AEBDCF`，实测卡片内最低对比度 4.6 以上。
+
+关闭时不走「在 `glass.css` 里写一份还原规则」——那样漏一条就再挂一次（曾经漏了边框，卡片整体消失）。现在是 `ui/js/glass.js` 直接给 `<link id="glass-css">` 加 `disabled`，关掉就等于回到 `app.css` 的原始界面。首帧由 `index.html` 里的一小段内联脚本处理，避免先闪一下玻璃。
+
+系统开了「降低透明度」（Chromium 132+ 的 `prefers-reduced-transparency`）时，面板退成实色、底图撤掉、侧栏回到原始配色，等价于纯色界面。
+
+`backdrop-filter` 每帧重算，所以**不做任何连续动效**——色块一旦动起来，所有玻璃层都要跟着重算。实测八页滚动 p95 都是 59–60fps。
+
 ---
 
 ## 七、部署向导在做什么
@@ -216,7 +236,7 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 | 获取 NapCat | 从 GitHub Release 拉 `NapCat.Shell.Windows.Node.zip`（约 118 MB，自带 node.exe），解压到 `stack/napcat`，自动剥掉压缩包顶层目录 |
 | 获取 AstrBot | 下载 AstrBot master 源码包解压到 `stack/astrbot`（设置里可改成 git clone） |
 | 安装依赖 | 建 `stack/venv` 独立虚拟环境，`pip install -r requirements.txt`，实时把 pip 最后一行推给进度条 |
-| 写入配置 | 写 `stack/napcat/config/onebot11_<QQ号>.json` 的 `websocketClients`，以及 `stack/astrbot/data/config/cmd_config.json` 的 `dashboard` 与 `platform`（aiocqhttp 反向 WS） |
+| 写入配置 | 写 `stack/napcat/config/onebot11.json` 的 `websocketClients`，以及 `stack/astrbot/data/cmd_config.json` 的 `dashboard` 与 `platform`（aiocqhttp 反向 WS）。两个文件名都不能改：NapCat 运行时先找 `onebot11_<QQ号>.json`、没有才读 `onebot11.json` 再另存；AstrBot 只认 `data/cmd_config.json`，写进 `data/config/` 会被当作不存在 |
 | 启动 NapCat | 拉起进程并等 WebUI 端口（最多 120s） |
 | 启动 AstrBot | 拉起进程并等控制台端口（最多 180s） |
 
@@ -242,6 +262,7 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 - 下载链路：实测选源（直连 + 三个加速镜像并发测速后取最快）、断点续传、半截包不算成功、20 秒没新数据就换源
 - 界面访问范围：「仅本机」/「允许局域网」真的会改监听地址（重启界面生效）
 - exe 已发布：<https://github.com/Zxin-Pro/astrbot-pc/releases>（目录版 zip 约 22 MB，另有单文件 exe）
+- 液态玻璃界面：深浅两套主题都有；底图、玻璃、颗粒三层叠出透色，关掉即回到原实色界面
 - Playwright 冒烟：八页零控制台报错、零失败请求，390px 窄屏不溢出；深色主题同样过一遍
 
 还没接：
@@ -252,6 +273,19 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 ---
 
 ## 九、更新日志
+
+### 1.1.0
+
+整套界面换成液态玻璃：
+
+- **底图层**：`<html>` 下新增 `.backdrop`（四块压进内容区下方的大模糊色块）与 `.grain`（极细颗粒），玻璃后面终于有东西可透。
+- **玻璃层**：新增 `ui/css/glass.css`，只覆盖材质，不动 `app.css` 的布局。侧栏、标题栏、卡片、弹层、命令面板、吐司换成玻璃；面板里的面板保持薄实色。
+- **开关**：设置 → 外观 → 液态玻璃材质（`app.glass`）。关掉时整张 `glass.css` 被停用，等于回到原来的实色界面；首帧由 `index.html` 的内联脚本处理，不会先闪一下玻璃。
+- **可读性**：玻璃会提亮背景，所以整条文字色阶压深一档，实测卡片内最低对比度：浅色 4.89、深色 4.50；关掉玻璃是 5.44 / 9.45。
+- **系统偏好**：`prefers-reduced-transparency` 下面板退成实色、底图撤掉、侧栏回到原始配色；`prefers-reduced-motion` 关闭色块位移。
+- **性能**：玻璃层数控制在能跑满帧的范围，八页滚动 p95 实测 59–60fps；不做连续动效，因为 `backdrop-filter` 每帧重算。
+- **顺带修**：390px 下顶栏标题折行把搜索框挤出屏幕；窄屏侧栏的「一键启动」按钮被切角。
+- **顺带修**：新建实例弹窗里输入框在浅色主题下白底白边，等于看不见——输入框改成按文字色减淡的凹槽，深浅通用。
 
 ### 1.0.1
 

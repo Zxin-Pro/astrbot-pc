@@ -3,6 +3,7 @@
 import { api } from '../api.js';
 import { confirmDialog, notify, updateNotesModal } from '../components.js';
 import { icon } from '../icons.js';
+import { applyGlass } from '../glass.js';
 import { getSetting } from '../store.js';
 import { esc } from '../util.js';
 import { pageHead } from './common.js';
@@ -97,6 +98,11 @@ export function mount(root, ctx) {
             title: '跟随系统',
             desc: '系统切换深色时界面跟着变',
             control: sw('app.followSystem', get('app.followSystem', true)),
+          })}
+          ${row({
+            title: '液态玻璃材质',
+            desc: '半透明磨砂面板，面板后面那层彩色背景会透上来。关掉就是实色，老显卡更顺',
+            control: sw('app.glass', get('app.glass', true)),
           })}
         </div>
       </div>
@@ -261,6 +267,8 @@ export function mount(root, ctx) {
         if (i === path.length - 1) cur[k] = el.checked;
         else cur = cur[k] = {};
       });
+      // 玻璃开关要当场生效，不能等写完配置再刷新
+      if (el.dataset.key === 'app.glass') applyGlass(el.checked);
       await save(patch);
     } else if (el.matches('select[data-sel]')) {
       const path = el.dataset.sel.split('.');

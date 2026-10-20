@@ -17,9 +17,9 @@ import urllib.request
 from pathlib import Path
 
 REPO = "Zxin-Pro/astrbot-pc"
-TAG = "pc-v1.0.1"
-NAME = "烛之控制台 v1.0.1 · PC 端"
-ZIP = Path(__file__).resolve().parent.parent / "dist" / "AstrBotPC-1.0.1-win64.zip"
+TAG = "pc-v1.1.0"
+NAME = "烛之控制台 v1.1.0 · PC 端"
+ZIP = Path(__file__).resolve().parent.parent / "dist" / "AstrBotPC-1.1.0-win64.zip"
 
 TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 HEADERS = {
@@ -28,17 +28,30 @@ HEADERS = {
     "Accept": "application/vnd.github+json",
 }
 
-BODY = """## 烛之控制台 v1.0.1 · AstrBot 烛版 PC 端
+BODY = """## 烛之控制台 v1.1.0 · AstrBot 烛版 PC 端
 
 把手机上那套「QQ 机器人一键包」搬到 Windows：一个自绘界面的桌面客户端，负责装 NapCat 与 AstrBot、看着两个进程、扫码登录、翻日志、备份与恢复。
 
 ### 下载
 
-- **AstrBotPC-1.0.1-win64.zip**（约 22 MB）——解压到任意目录，双击 `AstrBotPC.exe`
+- **AstrBotPC-1.1.0-win64.zip**（约 22 MB）——解压到任意目录，双击 `AstrBotPC.exe`
+- **AstrBotPC-1.1.0-win64-single.exe**——单文件版，拷一个文件就能跑（冷启动约 2 秒）
 - 不需要装 Python；Windows 10/11 自带 WebView2，更老的系统补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 - 绿色版：删目录即卸载，配置与日志写在 `%LOCALAPPDATA%\\AstrBotPC`
 
-### 这一版有什么
+### 1.1.0：整套界面换成液态玻璃
+
+- 底图层：四块压进内容区下方的大模糊色块 + 一层极细颗粒，玻璃后面终于有东西可透
+- 玻璃层：侧栏、标题栏、卡片、弹层、命令面板、吐司换成玻璃；面板里的面板保持薄实色
+- 开关：「设置 → 外观 → 液态玻璃材质」。关掉即回到原来的实色界面，不是打折版
+- 可读性：玻璃会提亮背景，所以整条文字色阶压深一档。实测卡片内最低对比度浅色 4.89、深色 4.50
+- 系统偏好：开了「降低透明度」就退成实色；开了「降低动效」就不动
+- 帧率：八页滚动 p95 实测 59–60fps，玻璃层不做连续动效
+- 顺带修：390px 下顶栏标题折行把搜索框挤出屏幕
+- 顺带修：窄屏侧栏的「一键启动」被切掉一角
+- 顺带修：新建实例弹窗里，浅色主题下输入框白底白边等于看不见
+
+### 功能一览
 
 - 八个页面：概览 / 部署 / 服务 / 日志 / 登录 / 实例 / 备份 / 设置
 - 部署向导八步，演练模式默认开启；真实模式断点续传拉 NapCat、建虚拟环境装 AstrBot
@@ -46,21 +59,7 @@ BODY = """## 烛之控制台 v1.0.1 · AstrBot 烛版 PC 端
 - 托盘常驻：关窗不退出，右键菜单启停服务、检查更新、退出
 - 检查更新只认 PC 端发布，不会拿手机版 APK 冒充
 - SSE 推送（status / log / deploy / notice），断线自动回落轮询
-- 深浅两套主题、Ctrl+K 命令面板、键盘可达、`prefers-reduced-motion` 生效
-
-### 1.0.1 修的
-
-上一版点「开始部署」即使八步全绿，装完也连不上——配置写到了 AstrBot 不读的路径。这版全部修掉：
-
-- AstrBot 配置改写到它真正会读的 `data/cmd_config.json`（原来写 `data/config/` 等于没写）
-- NapCat 改写到 `onebot11.json`（它先找 `onebot11_<QQ号>.json`，找不到才回退读这个）
-- 演练模式结束不再写「全部完成」，改成「演练通过：没有任何文件被安装」
-- 联网检查改测下载源本身，不再出现「检查通过但下载必挂」
-- 下载链路重写：直连 + 三个镜像并发测速取最快、20 秒无新数据换源、换源保留断点、半截包不再当成功
-- 子进程补 UTF-8 环境变量，修中文日志乱码与 emoji 导致的 `UnicodeEncodeError`
-- 命令带引号时不再报「系统找不到指定的文件」
-- 应用被强杀后，下次启动回收残留子进程（只认本程序数据目录）
-- 新增「下载加速镜像」开关
+- 深浅两套主题、Ctrl+K 命令面板、键盘可达
 
 ### 已知问题
 

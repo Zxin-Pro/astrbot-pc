@@ -1,0 +1,380 @@
+
+/* ==================================================================
+   液态玻璃材质
+   ------------------------------------------------------------------
+   这一节整体压在文件最后，靠层叠顺序覆盖上面各组件原本的实色底。
+   规则只有三条：
+     1. 玻璃必须背后有东西 —— 底图在 .backdrop 那一层
+     2. 边框不能均匀 —— 左上高光、中段透明、右下回光（--glass-rim-gradient）
+     3. 玻璃只给「面板」用，面板里的面板一律实色（玻璃叠玻璃会糊成一片）
+   关掉玻璃由 [data-glass="off"] 把令牌换成实色，这里不用再写一遍
+   ================================================================== */
+
+/* ------------------------------ 底图 ------------------------------ */
+
+body {
+  background: var(--aurora-base);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(58% 46% at 52% 44%, var(--aurora-5) 0%, transparent 72%),
+    var(--aurora-base);
+  contain: strict;
+}
+
+.backdrop__blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(78px);
+  opacity: .9;
+}
+/* 色团的位置要压到「卡片下面」才有意义：全放在边角的话，
+   颜色只会出现在页边距里，被卡片盖住的部分依然是白的。 */
+.backdrop__blob.b1 { width: 64vw; height: 58vw; left: 4vw; top: -16vw; background: var(--aurora-1); }
+.backdrop__blob.b2 { width: 56vw; height: 48vw; right: -8vw; top: -6vw; background: var(--aurora-2); }
+.backdrop__blob.b3 { width: 58vw; height: 50vw; left: 6vw; bottom: -26vw; background: var(--aurora-3); }
+.backdrop__blob.b4 { width: 52vw; height: 46vw; right: 2vw; bottom: -10vw; background: var(--aurora-4); }
+
+/* 泡水的白纱：把彩色压淡一档，保证正文始终 ≥ 4.5:1 */
+.backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, var(--aurora-veil-1), var(--aurora-veil-2));
+}
+
+/* 极细颗粒。玻璃是「有材质」的，纯数学渐变会显得像塑料 */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: .5;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.26'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+[data-theme="dark"] .grain { opacity: .34; }
+[data-glass="off"] .grain { display: none; }
+
+.app { position: relative; z-index: 2; background: transparent; }
+
+/* 内容区原来是实色 + 一层蓝色径向渐变，必须让位给底图，否则玻璃后面永远是白的 */
+.content {
+  background: transparent;
+}
+
+/* ------------------------------ 通用玻璃面板 ------------------------------ */
+
+.card,
+.stat,
+.log-shell,
+.qr-stage,
+.health-card,
+.modal,
+.palette,
+.toast {
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  border: 1px solid transparent;
+  /* 三层，从下到上：边缘高光 → 玻璃本体 → 面反光。
+     关键是本体那层要 clip 到 padding-box，把高光挤进 1px 边框里；
+     只写 background-clip: border-box 是挡不住高光的，它会铺满整张卡。 */
+  background-color: transparent;
+  background-image:
+    var(--glass-face-gradient),
+    linear-gradient(var(--glass-tint), var(--glass-tint)),
+    var(--glass-rim-gradient);
+  background-origin: padding-box, padding-box, border-box;
+  background-clip: padding-box, padding-box, border-box;
+  box-shadow: var(--glass-sheen), var(--glass-shadow);
+}
+
+[data-glass="off"] .card,
+[data-glass="off"] .stat,
+[data-glass="off"] .log-shell,
+[data-glass="off"] .qr-stage,
+[data-glass="off"] .health-card,
+[data-glass="off"] .modal,
+[data-glass="off"] .palette,
+[data-glass="off"] .toast,
+[data-glass="off"] .titlebar,
+[data-glass="off"] .sidebar {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* 卡片：悬停时只抬阴影和描边，不缩放（避免文字跟着糊） */
+.card.is-interactive:hover {
+  border-color: transparent;
+  box-shadow: var(--glass-sheen), var(--glass-shadow-lg);
+  transform: translateY(-1px);
+}
+.stat:hover {
+  box-shadow: var(--glass-sheen), var(--glass-shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* 卡片内的分隔线要更轻，否则玻璃上会像画了一堆钢筋 */
+.card .divider { background: color-mix(in srgb, var(--line) 60%, transparent); }
+
+/* ------------------------------ 外壳 ------------------------------ */
+
+.titlebar {
+  background-color: var(--glass-tint-strong);
+  background-image: var(--glass-face-gradient);
+  border-bottom: 1px solid var(--glass-rim-2);
+  -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
+  box-shadow: inset 0 1px 0 var(--glass-rim), 0 1px 0 rgba(15, 23, 42, .04);
+}
+
+.crumb {
+  background: var(--glass-tint-weak);
+  border-color: var(--glass-rim-2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  backdrop-filter: blur(10px) saturate(1.4);
+}
+[data-theme="dark"] .crumb { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .10); }
+
+.kbd-hint {
+  background: var(--glass-tint-weak);
+  border-color: var(--glass-rim-2);
+}
+
+.ghost-btn,
+.icon-btn {
+  border-color: var(--glass-rim-2);
+  background-color: var(--glass-tint-weak);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5);
+}
+[data-theme="dark"] .ghost-btn,
+[data-theme="dark"] .icon-btn { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .09); }
+
+.ghost-btn:hover,
+.icon-btn:hover { background-color: var(--glass-tint); }
+
+.winctrl button { border-radius: var(--r-xs); }
+.winctrl button:hover { background: var(--glass-tint); }
+
+/* ------------------------------ 侧栏 ------------------------------ */
+
+.sidebar {
+  background-color: transparent;
+  background-image:
+    linear-gradient(168deg, rgba(255, 255, 255, .09) 0%, rgba(255, 255, 255, 0) 42%),
+    linear-gradient(180deg, rgba(14, 23, 41, .78) 0%, rgba(7, 12, 22, .86) 62%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(1.5);
+  backdrop-filter: blur(var(--glass-blur-lg)) saturate(1.5);
+  border-right: 1px solid rgba(255, 255, 255, .09);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, .05), 12px 0 48px -32px rgba(2, 6, 23, .8);
+}
+/* 侧栏本身已经是深色玻璃，原来那条 1px 描边就不要了 */
+.sidebar::after { display: none; }
+
+.nav-item:hover { background: rgba(255, 255, 255, .085); }
+
+.nav-item.is-active {
+  background:
+    linear-gradient(96deg, rgba(37, 99, 235, .46), rgba(37, 99, 235, .14) 78%),
+    rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .22),
+    inset 0 0 0 1px rgba(96, 165, 250, .18),
+    0 10px 24px -14px rgba(37, 99, 235, .95);
+}
+.nav-item.is-active::before { left: -13px; }
+
+.health-card {
+  background-color: rgba(255, 255, 255, .06);
+  background-image: none;
+  border-color: rgba(255, 255, 255, .14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 16px 40px -20px rgba(0, 0, 0, .9);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  backdrop-filter: blur(14px) saturate(1.3);
+}
+
+/* ------------------------------ 表单控件 ------------------------------ */
+
+/* 输入框是「凹槽」，不是玻璃。用白色描边 + 白色底的话，
+   在浅色玻璃面板上会直接消失（白底白边）。所以这里按文字色做减淡：
+   --ink 会跟着主题翻转，同一个公式在深浅两套下都成立。 */
+.input,
+.select,
+.textarea {
+  background-color: color-mix(in srgb, var(--ink) 5%, transparent);
+  border-color: color-mix(in srgb, var(--ink) 15%, transparent);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent);
+}
+[data-theme="dark"] .input,
+[data-theme="dark"] .select,
+[data-theme="dark"] .textarea {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .35);
+}
+
+.input:hover,
+.select:hover,
+.textarea:hover {
+  background-color: color-mix(in srgb, var(--ink) 8%, transparent);
+  border-color: color-mix(in srgb, var(--ink) 22%, transparent);
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  background-color: color-mix(in srgb, var(--ink) 4%, transparent);
+  border-color: var(--brand-500);
+  box-shadow: var(--sh-ring);
+}
+
+/* 分段控件：玻璃槽 + 滑块，选中块单独提亮 */
+.segmented {
+  background: var(--glass-tint-weak);
+  border-color: var(--glass-rim-2);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, .06);
+}
+.segmented button.is-active {
+  background: var(--glass-tint-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8), 0 1px 2px rgba(15, 23, 42, .10);
+}
+[data-theme="dark"] .segmented button.is-active {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 1px 2px rgba(0, 0, 0, .4);
+}
+
+/* 开关：打开时是实心品牌色（状态不能靠透明度表达），关闭时是磨砂槽 */
+.switch { background: color-mix(in srgb, var(--line-strong) 62%, transparent); }
+.switch::after { box-shadow: 0 1px 2px rgba(15, 23, 42, .25), inset 0 1px 0 rgba(255, 255, 255, .9); }
+
+/* ------------------------------ 按钮 ------------------------------
+   注意别给 .btn 写 --btn-bg / background-image：
+   .btn--primary 的底色就是靠 --btn-bg 传进 .btn 的 background 简写的，
+   后写的 .btn 一旦动这两个属性，主按钮会连底色带渐变一起被抹成白块。 */
+
+.btn {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .62), 0 1px 2px rgba(15, 23, 42, .05);
+}
+[data-theme="dark"] .btn { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .10), 0 1px 2px rgba(0, 0, 0, .35); }
+
+/* 次级按钮（默认、描边、图标）才换玻璃底 */
+.btn:not(.btn--primary):not(.btn--warm):not(.btn--danger):not(.btn--ghost) {
+  background-color: var(--glass-tint-weak);
+  background-image: var(--glass-face-gradient);
+  border-color: var(--glass-rim-2);
+}
+.btn:not(.btn--primary):not(.btn--warm):not(.btn--danger):not(.btn--ghost):hover {
+  background-color: var(--glass-tint);
+}
+
+/* 实心按钮：只补一层顶光和更长的投影，底色不动 */
+.btn--primary {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .34), 0 8px 20px -10px rgba(37, 99, 235, .85);
+}
+.btn--warm {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .32), 0 8px 20px -10px rgba(234, 88, 12, .8);
+}
+.btn--ghost {
+  background-color: transparent;
+  background-image: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+.btn--ghost:hover { background-color: var(--glass-tint-weak); }
+
+/* ------------------------------ 徽标 / 数据块 ------------------------------ */
+
+.pill,
+.tag { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5); }
+[data-theme="dark"] .pill,
+[data-theme="dark"] .tag { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
+
+/* 面板里的「面板」保持实色薄层，玻璃叠玻璃会糊 */
+.svc__meta,
+.update-notes__body,
+.log-body,
+.qr-stage__inner {
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+}
+
+/* ------------------------------ 弹层 ------------------------------ */
+
+.modal-backdrop {
+  background: color-mix(in srgb, var(--bg-deep) 46%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  backdrop-filter: blur(10px) saturate(1.2);
+}
+[data-theme="dark"] .modal-backdrop { background: rgba(2, 6, 15, .58); }
+
+.palette-backdrop {
+  background: color-mix(in srgb, var(--bg-deep) 40%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  backdrop-filter: blur(10px) saturate(1.2);
+}
+[data-theme="dark"] .palette-backdrop { background: rgba(2, 6, 15, .52); }
+
+.modal,
+.palette {
+  background-image:
+    var(--glass-face-gradient),
+    linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)),
+    var(--glass-rim-gradient);
+  -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
+  box-shadow: var(--glass-sheen), var(--glass-shadow-lg);
+}
+.modal__foot { border-top-color: var(--glass-rim-2); }
+
+.palette__input { border-bottom-color: var(--glass-rim-2); }
+.palette__item.is-active,
+.palette__item:hover { background: color-mix(in srgb, var(--brand-500) 14%, transparent); }
+
+.toast {
+  background-image:
+    linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)),
+    var(--glass-rim-gradient);
+}
+
+/* ------------------------------ 关掉玻璃 ------------------------------ */
+
+/* 关掉时整张表由 js/glass.js 停用，这里不用再写还原规则。
+   唯一要留的是「别让底图在停用前后残留」——这张表在停用时本来就不生效，
+   所以下面两条只是为了 DOM 上还留着 .backdrop 元素时能立刻消失。 */
+[data-glass="off"] .backdrop,
+[data-glass="off"] .grain { display: none; }
+
+/* ------------------------------ 动效偏好 ------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop__blob { filter: blur(64px); }
+}
+
+/* 系统要「降低透明度」时，面板已经退成实色，彩底就只剩页边一条缝里晃，
+   反而更花。直接撤掉底图，回到干净的纯色背景。
+   侧栏本来靠半透明夜色压住底图，底图一撤，那层 alpha 会把白底透成灰蓝，
+   所以这里连侧栏一起退回不透明的原始配色。 */
+@media (prefers-reduced-transparency: reduce) {
+  .backdrop,
+  .grain { display: none; }
+
+  .sidebar {
+    background:
+      radial-gradient(120% 60% at 0% 0%, rgba(37, 99, 235, .22) 0%, transparent 58%),
+      linear-gradient(180deg, var(--nav-bg-2) 0%, var(--nav-bg) 62%);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-right: 0;
+    box-shadow: none;
+  }
+  .sidebar::after { display: block; }
+}
+
+/* 低端显卡 / 小窗口：把模糊半径和层数都降一档 */
+@media (max-width: 900px) {
+  :root { --glass-blur: 14px; --glass-blur-lg: 18px; }
+}

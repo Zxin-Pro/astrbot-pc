@@ -7,9 +7,29 @@
 <title>烛之控制台 · AstrBot PC 端</title>
 <link rel="stylesheet" href="/css/tokens.css">
 <link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/glass.css" id="glass-css">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<script>
+  /* 关掉玻璃时直接把整张 glass.css 停用，而不是在它里面再写一遍兜底。
+     这样「关」就等于回到 app.css 的原始样式，不会漏还原某个边框。
+     放在这里是为了首帧就生效，否则会先闪一下玻璃再跳成实色。 */
+  try {
+    if (localStorage.getItem('dsh.glass') === '0') {
+      document.getElementById('glass-css').disabled = true;
+    }
+  } catch (e) {}
+</script>
 </head>
 <body class="no-shell">
+
+<!-- 玻璃背后的那层彩色。没有它，所有 backdrop-filter 都只是「白雾」看不出来 -->
+<div class="backdrop" aria-hidden="true">
+  <span class="backdrop__blob b1"></span>
+  <span class="backdrop__blob b2"></span>
+  <span class="backdrop__blob b3"></span>
+  <span class="backdrop__blob b4"></span>
+</div>
+<div class="grain" aria-hidden="true"></div>
 
 <div class="app" id="app">
 

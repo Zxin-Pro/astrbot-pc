@@ -40,9 +40,9 @@
   --surface-2: #F8FAFC;
   --surface-3: #F1F5F9;
   --ink:       #0F172A;
-  --ink-2:     #475569;
-  --ink-3:     #64748B;
-  --ink-4:     #94A3B8;
+  --ink-2:     #334155;
+  --ink-3:     #475569;
+  --ink-4:     #64748B;
   --line:      #E2E8F0;
   --line-2:    #EDF1F7;
   --line-strong: #CBD5E1;
@@ -56,6 +56,50 @@
   --nav-ink:        #E6EDF7;
   --nav-ink-2:      #9AAAC2;
   --nav-ink-3:      #64748B;
+
+  /* ---- 液态玻璃材质 ----
+     玻璃只有在「背后有东西」时才成立，所以下面这些半透明色一律配合 .backdrop
+     那层彩色底图使用；单独看它们只是一层薄雾。 */
+  --glass-blur: 20px;
+  --glass-blur-lg: 30px;
+  --glass-sat: 1.55;
+  --glass-tint:        rgba(255, 255, 255, .40);
+  --glass-tint-strong: rgba(255, 255, 255, .62);
+  --glass-tint-weak:   rgba(255, 255, 255, .24);
+  --glass-tint-deep:   rgba(255, 255, 255, .80);
+  --glass-rim:   rgba(255, 255, 255, 1);
+  --glass-rim-2: rgba(255, 255, 255, .42);
+  --glass-edge:  rgba(15, 23, 42, .08);
+  --glass-sheen: inset 0 1px 0 rgba(255, 255, 255, .92), inset 0 -1px 0 rgba(255, 255, 255, .34);
+  /* 玻璃边缘的高光：左上最亮 → 中段几乎透明 → 右下回光。
+     这是「液体」感的来源，边框不能是一条均匀的线。 */
+  --glass-rim-gradient: linear-gradient(158deg,
+    var(--glass-rim) 0%, var(--glass-rim-2) 34%,
+    rgba(255, 255, 255, 0) 56%,
+    var(--glass-rim-2) 84%, var(--glass-rim) 100%);
+  /* 玻璃面本身的斜向反光 */
+  --glass-face-gradient: linear-gradient(148deg,
+    rgba(255, 255, 255, .34) 0%, rgba(255, 255, 255, .13) 26%,
+    rgba(255, 255, 255, .02) 52%, rgba(255, 255, 255, 0) 72%,
+    rgba(255, 255, 255, .10) 100%);
+  --glass-shadow:
+    0 1px 1px rgba(15, 23, 42, .04),
+    0 10px 28px -12px rgba(15, 23, 42, .20),
+    0 28px 56px -28px rgba(15, 23, 42, .22);
+  --glass-shadow-lg:
+    0 2px 4px rgba(15, 23, 42, .05),
+    0 24px 56px -16px rgba(15, 23, 42, .26),
+    0 64px 120px -48px rgba(15, 23, 42, .30);
+
+  /* 底图（玻璃背后的那层彩色） */
+  --aurora-1: rgba(37, 99, 235, .52);
+  --aurora-2: rgba(234, 88, 12, .38);
+  --aurora-3: rgba(16, 185, 129, .36);
+  --aurora-4: rgba(139, 92, 246, .44);
+  --aurora-5: rgba(56, 189, 248, .26);
+  --aurora-base: #E8EFFA;
+  --aurora-veil-1: rgba(255, 255, 255, .38);
+  --aurora-veil-2: rgba(255, 255, 255, .15);
 
   /* ---- 圆角 ---- */
   --r-xs: 6px;
@@ -130,9 +174,9 @@
   --surface-2: #111C2E;
   --surface-3: #16233A;
   --ink:       #E8EEF9;
-  --ink-2:     #A9B8CE;
-  --ink-3:     #8296B0;
-  --ink-4:     #64748B;
+  --ink-2:     #C2CEDE;
+  --ink-3:     #AEBDCF;
+  --ink-4:     #889AB0;
   --line:      #1E2B41;
   --line-2:    #182339;
   --line-strong: #2A3B56;
@@ -155,4 +199,66 @@
   --sh-md: 0 2px 6px rgba(0, 0, 0, .35), 0 16px 32px -12px rgba(0, 0, 0, .6);
   --sh-lg: 0 8px 16px rgba(0, 0, 0, .4), 0 32px 64px -24px rgba(0, 0, 0, .75);
   --sh-ring: 0 0 0 3px rgba(59, 130, 246, .3);
+
+  /* ---- 液态玻璃（深色）----
+     深色下玻璃不能靠「白雾」，要靠一点点冷色提亮 + 更亮的描边，否则会糊成一团。 */
+  --glass-tint:        rgba(20, 31, 50, .62);
+  --glass-tint-strong: rgba(9, 15, 26, .86);
+  --glass-tint-weak:   rgba(20, 31, 50, .44);
+  --glass-tint-deep:   rgba(14, 22, 36, .93);
+  --glass-rim:   rgba(255, 255, 255, .17);
+  --glass-rim-2: rgba(255, 255, 255, .05);
+  --glass-sat: 1.32;
+  --glass-rim:   rgba(255, 255, 255, .22);
+  --glass-rim-2: rgba(255, 255, 255, .06);
+  --glass-edge:  rgba(0, 0, 0, .38);
+  --glass-sheen: inset 0 1px 0 rgba(255, 255, 255, .16), inset 0 -1px 0 rgba(255, 255, 255, .05);
+  --glass-face-gradient: linear-gradient(150deg,
+    rgba(255, 255, 255, .10) 0%, rgba(255, 255, 255, .03) 34%,
+    rgba(255, 255, 255, 0) 58%, rgba(255, 255, 255, .05) 100%);
+  --glass-shadow:
+    0 1px 1px rgba(0, 0, 0, .34),
+    0 12px 30px -12px rgba(0, 0, 0, .58),
+    0 32px 64px -32px rgba(0, 0, 0, .70);
+  --glass-shadow-lg:
+    0 2px 6px rgba(0, 0, 0, .40),
+    0 28px 64px -18px rgba(0, 0, 0, .68),
+    0 72px 140px -56px rgba(0, 0, 0, .80);
+
+  --aurora-1: rgba(37, 99, 235, .68);
+  --aurora-2: rgba(234, 88, 12, .40);
+  --aurora-3: rgba(16, 185, 129, .34);
+  --aurora-4: rgba(139, 92, 246, .56);
+  --aurora-5: rgba(56, 189, 248, .30);
+  --aurora-base: #050A13;
+  --aurora-veil-1: rgba(3, 7, 14, .26);
+  --aurora-veil-2: rgba(3, 7, 14, .54);
+}
+
+/* ============================ 降低透明度 ============================
+   系统开了「降低透明度」时（Chromium 132+ 支持 prefers-reduced-transparency），
+   退回不透明的实色 + 去掉 backdrop-filter。
+   注意：用户手动关玻璃不走这条路 —— 那是 js/glass.js 直接停用整张 glass.css。
+   这里必须留在 tokens.css 里，因为它要在「样式表还生效」的前提下把材质压平。 */
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-blur: 0px;
+    --glass-blur-lg: 0px;
+    --glass-sat: 1;
+    --glass-tint:        var(--surface);
+    --glass-tint-strong: var(--surface);
+    --glass-tint-weak:   var(--surface-2);
+    --glass-tint-deep:   var(--surface);
+    --glass-rim: var(--line);
+    --glass-rim-2: var(--line-2);
+    --glass-edge: var(--line);
+    --glass-sheen: none;
+    --glass-shadow: var(--sh-sm);
+    --glass-shadow-lg: var(--sh-lg);
+    --glass-face-gradient: none;
+    /* 必须仍然是「图片」：写成裸颜色会让整条 background-image 失效，
+       连本体那层填充一起丢，卡片就变成透明的了 */
+    --glass-rim-gradient: linear-gradient(var(--line), var(--line));
+  }
 }

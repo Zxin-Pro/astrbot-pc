@@ -9,6 +9,12 @@ import {
   refreshState, refreshDeploy, refreshInstances, refreshBackups, saveSetting, runningCount, servicesList,
 } from './store.js';
 import { esc, dur, num } from './util.js';
+import { bootGlass, syncGlass } from './glass.js';
+
+/* ---------------------------------------------------------------- 玻璃质感 */
+
+// 首帧就定下来，避免「先实色再变玻璃」闪一下。
+bootGlass();
 
 /* ---------------------------------------------------------------- 主题 */
 
@@ -289,6 +295,8 @@ async function main() {
   });
 
   await bootstrap();
+
+  syncGlass(store.config?.app?.glass);
 
   if (!store.ready) {
     notify.error(store.error || '读取启动数据失败');

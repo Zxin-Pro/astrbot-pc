@@ -84,8 +84,22 @@ a:hover { text-decoration: underline; }
 .mark { display: grid; place-items: center; filter: drop-shadow(0 2px 6px rgba(37, 99, 235, .28)); }
 
 .brandtext { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
-.brandtext strong { font-size: var(--f-13); font-weight: 600; letter-spacing: .2px; }
-.brandtext span { font-size: var(--f-11); color: var(--ink-4); letter-spacing: .3px; }
+.brandtext strong {
+  font-size: var(--f-13);
+  font-weight: 600;
+  letter-spacing: .2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.brandtext span {
+  font-size: var(--f-11);
+  color: var(--ink-4);
+  letter-spacing: .3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .titlebar__center { display: grid; place-items: center; }
 
@@ -1135,6 +1149,10 @@ body.no-shell .titlebar { grid-template-columns: 1fr auto 1fr; }
   .grid--4, .grid--2 { grid-template-columns: minmax(0, 1fr); }
   .page-head h1 { font-size: var(--f-20); }
   .titlebar__center { display: none; }
+  /* 顶栏在窄屏只留「标记 + 主标题」，副标题和快捷键提示一律让位，
+     否则会被挤成三行、把右边的搜索框顶出去 */
+  .brandtext span { display: none; }
+  .kbd-hint { display: none; }
   .svc__meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .toasts { left: 16px; right: 16px; max-width: none; }
   .page-host { padding: 16px 14px 48px; }
@@ -1148,6 +1166,14 @@ body.no-shell .titlebar { grid-template-columns: 1fr auto 1fr; }
   .log-shell { height: calc(100vh - 220px); }
   .qr-stage img { width: 180px; height: 180px; }
   .winctrl button { width: 30px; }
+  /* 只剩标记，标题收进 aria-label 里，视觉上不再抢宽度 */
+  .brandtext { display: none; }
+  .titlebar { padding: 0 8px 0 10px; }
+  /* 58px 的导轨塞不下 40px 的按钮 + 两层内边距，会被切掉一角，
+     所以这里把内边距和按钮一起收窄，正好居中 */
+  .sidebar__foot { padding: 6px; }
+  .health-card { padding: 3px; }
+  .health-card__btn { width: 34px; height: 30px; }
 }
 
 /* ------------------------------ 无障碍 ------------------------------ */
