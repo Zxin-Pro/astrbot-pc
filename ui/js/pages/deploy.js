@@ -19,6 +19,9 @@ const STEP_ICONS = {
 
 export function mount(root, ctx) {
   let lastStatus = '';
+  // 部署跑完后 store.env 还是进页面时那份旧快照，右侧体检会一直显示「缺失」。
+  // 记住最后处理过的 finishedAt，保证每次部署结束只重新体检一次。
+  let envCheckedAt = 0;
 
   root.innerHTML = `
     <div class="page">
@@ -121,15 +124,16 @@ export function mount(root, ctx) {
     if (!off.wheels) missing.push('依赖包');
     const lazy = !!off.lazy;
     const ready = !!off.ready;
-    const cls = lazy ? 'pill--ok' : ready ? 'pill--ok' : have.length ? 'pill--warn' : 'pill--bad';
-    const label = lazy ? '懒人版' : ready ? '已内置' : have.length ? '不完整' : '未内置';
+    // 一样都没有不是「出问题了」，就是普通联网安装包，别拿红色吓人
+    const cls = lazy || ready ? 'pill--ok' : have.length ? 'pill--warn' : '';
+    const label = lazy ? '懒人版' : ready ? '已内置' : have.length ? '不完整' : '联网安装';
     const detail = lazy
       ? `懒人版齐全（${have.join(' + ')}），部署时不用联网，也不用另装 Python`
       : ready
         ? `离线包齐全（${have.join(' + ')}），部署时一步都不用联网`
         : have.length
           ? `有 ${have.join(' + ')}，还缺 ${missing.join('、') || '便携 Python'}，这几步会走网络`
-          : '没有离线包，部署时要联网下载';
+          : '这是联网安装包：部署时从 GitHub 拉 NapCat 与 AstrBot 源码，再用 pip 装依赖';
     return `
       <div class="list__row">
         <span class="pill ${cls}">${label}</span>
@@ -176,6 +180,21 @@ export function mount(root, ctx) {
           </div>
         </div>`;
     }).join('');
+  }
+
+  // 体检结果只存在 store.env 里，部署把磁盘改了却没人去重拉，右侧会一直停在开页时那份旧快照。
+  // 部署一结束就强制重查一次，用户不用自己去点「重新体检」。
+  async function refreshEnv() {
+    try {
+      const res = await api.envCheck();
+      if (res.ok && res.env) {
+        ctx.store.env = res.env;
+        ctx.emit?.('env');
+      }
+    } catch {
+      // 拉不到就算了，按钮还在，用户能手动重试
+    }
+    renderEnv();
   }
 
   function renderSteps() {
@@ -313,6 +332,12 @@ export function mount(root, ctx) {
       if (reason === 'deploy') renderSteps();
       if (reason === 'bootstrap' || reason === 'state' || reason === 'refresh'
           || reason === 'deploy') renderEnv();
+      // 不管哪个事件进来的，只要发现有「刚结束的部署」就补一次体检
+      const fin = store.deploy && store.deploy.finishedAt;
+      if (store.deploy?.finished && fin && fin !== envCheckedAt) {
+        envCheckedAt = fin;
+        refreshEnv();
+      }
     },
     destroy() {
       clearInterval(ticker);

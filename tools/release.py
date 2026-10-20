@@ -17,12 +17,12 @@ import urllib.request
 from pathlib import Path
 
 REPO = "Zxin-Pro/astrbot-pc"
-TAG = "pc-v1.3.0"
-NAME = "烛之控制台 v1.3.0 · PC 端"
+TAG = "pc-v1.3.1"
+NAME = "烛之控制台 v1.3.1 · PC 端"
 DIST = Path(__file__).resolve().parent.parent / "dist"
-ZIP = DIST / "AstrBotPC-1.3.0-win64.zip"
-OFFLINE = DIST / "AstrBotPC-1.3.0-win64-offline.zip"
-SINGLE = DIST / "AstrBotPC-1.3.0-win64-single.exe"
+ZIP = DIST / "AstrBotPC-1.3.1-win64.zip"
+OFFLINE = DIST / "AstrBotPC-1.3.1-win64-offline.zip"
+SINGLE = DIST / "AstrBotPC-1.3.1-win64-single.exe"
 
 TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 HEADERS = {
@@ -39,9 +39,9 @@ BODY = """## 烛之控制台 v1.3.0 · AstrBot 烛版 PC 端
 
 | 文件 | 大小 | 适合谁 | 装的时候 |
 |---|---|---|---|
-| **AstrBotPC-1.3.0-win64-offline.zip**（懒人版） | 约 285 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
-| AstrBotPC-1.3.0-win64.zip（目录版） | 约 22 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
-| AstrBotPC-1.3.0-win64-single.exe（单文件版） | 约 22 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
+| **AstrBotPC-1.3.1-win64-offline.zip**（懒人版） | 约 285 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
+| AstrBotPC-1.3.1-win64.zip（目录版） | 约 22 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
+| AstrBotPC-1.3.1-win64-single.exe（单文件版） | 约 22 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
 
 **懒人版**里带着 NapCat、AstrBot 源码、151 个依赖 wheel，还有一份便携 Python 3.12。下载一个包，解压，双击 `AstrBotPC.exe`，点「开始部署」，全程不用打开浏览器、不用装任何东西、不用连网。
 
@@ -52,6 +52,12 @@ BODY = """## 烛之控制台 v1.3.0 · AstrBot 烛版 PC 端
 - Windows 10/11 自带 WebView2，更老的系统补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 - 绿色版：删目录即卸载，配置与日志写在 `%LOCALAPPDATA%\\AstrBotPC`
 - 懒人版体积大是因为资源摆在 `AstrBotPC.exe` 旁边的 `resources\\` 里，删掉它就是目录版
+
+### 1.3.1：装好之后右侧不再显示「没装」
+
+- 修：部署一跑完，右侧体检自己重新查一遍。原先它只认进页面时那份旧快照，于是左边八步全绿、右边还写着「NapCat 缺失」「AstrBot 源码不完整」，看着像装坏了其实已经好了
+- 修：「离线资源：未内置」那条红色标签改成中性的「联网安装」——普通安装包本来就不带资源，不该长得像故障
+- 要是还看到旧的「缺失」，点一下「重新体检」也会立刻纠正；这个版本之后不用再点
 
 ### 1.3.0：懒人版，连 Python 都不用装
 
