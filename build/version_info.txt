@@ -17,12 +17,12 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', '烛心'),
           StringStruct('FileDescription', '烛之控制台 · AstrBot 烛版 PC 端'),
-          StringStruct('FileVersion', '1.0.0'),
+          StringStruct('FileVersion', '1.0.1'),
           StringStruct('InternalName', 'AstrBotPC'),
           StringStruct('LegalCopyright', 'Copyright (C) 2026 烛心'),
           StringStruct('OriginalFilename', 'AstrBotPC.exe'),
           StringStruct('ProductName', '烛之控制台'),
-          StringStruct('ProductVersion', '1.0.0')
+          StringStruct('ProductVersion', '1.0.1')
         ]
       )
     ]),

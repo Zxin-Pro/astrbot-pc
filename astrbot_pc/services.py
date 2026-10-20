@@ -41,6 +41,18 @@ def _creationflags() -> int:
     return flags
 
 
+def _child_env() -> dict[str, str]:
+    """子进程统一走 UTF-8。
+
+    输出被重定向到文件时，Windows 上的 Python 会退回 GBK，中文日志变乱码，
+    带 emoji 的日志行还会抛 UnicodeEncodeError 直接丢掉。
+    """
+    env = dict(os.environ)
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    return env
+
+
 def rotate_log(p: Path) -> None:
     """日志超过 20 MB 就截成末尾 2 MB，跟手机版同一条规则。"""
     try:
@@ -102,11 +114,12 @@ class ServiceManager:
         python = sys.executable
 
         if key == "astrbot":
-            root = Path(envcheck._first_existing(envcheck.ASTRBOT_SEARCH))
+            hit = envcheck._first_existing(envcheck.ASTRBOT_SEARCH)
             if custom:
-                return _split(custom), str(root or paths.STACK_DIR)
-            if not root.exists():
+                return _split(custom), str(hit or paths.STACK_DIR)
+            if not hit:
                 raise RuntimeError("AstrBot 还没装好，请先走一遍部署向导")
+            root = Path(hit)
             # 有虚拟环境就用它，依赖才装得全
             from .deploy import venv_python
 
@@ -118,11 +131,13 @@ class ServiceManager:
             raise RuntimeError("AstrBot 目录里找不到 main.py，可能装坏了")
 
         if key == "napcat":
-            root = Path(envcheck._first_existing(envcheck.NAPCAT_SEARCH))
+            hit = envcheck._first_existing(envcheck.NAPCAT_SEARCH)
             if custom:
-                return _split(custom), str(root.parent if root.is_file() else (root or paths.STACK_DIR))
-            if not root.exists():
+                base = Path(hit) if hit else paths.STACK_DIR
+                return _split(custom), str(base.parent if base.is_file() else base)
+            if not hit:
                 raise RuntimeError("NapCat 还没装好，请先走一遍部署向导")
+            root = Path(hit)
             base = root.parent if root.is_file() else root
             for name in ("launcher.bat", "napcat.bat", "start.bat"):
                 cand = base / name
@@ -175,6 +190,7 @@ class ServiceManager:
                     stderr=subprocess.STDOUT,
                     stdin=subprocess.DEVNULL,
                     creationflags=_creationflags(),
+                    env=_child_env(),
                 )
             except Exception as e:
                 st.status = "crashed"
@@ -236,6 +252,32 @@ class ServiceManager:
 
     def stop_all(self) -> dict[str, Any]:
         return {k: self.stop(k) for k in ("astrbot", "napcat")}
+
+    def reap_stale(self) -> list[str]:
+        """清掉上一次没正常退出留下的子进程。
+
+        应用被强制结束（任务管理器、断电、崩溃）时子进程会变孤儿：NapCat 还连着
+        QQ，下次启动再拉一个就会端口冲突。这里按记录下来的 PID 收拾，且只认
+        本程序数据目录下的可执行文件，避免 PID 复用误杀别人的进程。
+        """
+        killed: list[str] = []
+        for key in ("astrbot", "napcat"):
+            try:
+                data = config.read_state(f"svc-{key}.json") or {}
+            except Exception:
+                continue
+            pid = int(data.get("pid") or 0)
+            if not pid or not _pid_alive(pid):
+                if pid:
+                    config.state_file(f"svc-{key}.json").unlink(missing_ok=True)
+                continue
+            if not _owned_by_stack(pid):
+                config.state_file(f"svc-{key}.json").unlink(missing_ok=True)
+                continue
+            _kill_tree(pid)
+            killed.append(f"{key}:{pid}")
+            config.state_file(f"svc-{key}.json").unlink(missing_ok=True)
+        return killed
 
     # ---------- 状态 ----------
 
@@ -343,12 +385,43 @@ class ServiceManager:
 
 
 def _split(cmd: str) -> list[str]:
+    """按 Windows 习惯拆命令。
+
+    posix=False 会把引号留在 token 里，`"C:\\Python\\python.exe" ...` 直接找不到文件，
+    而 Windows 上带空格的路径几乎一定要加引号，所以这里手工剥一层。
+    """
     import shlex
 
     try:
-        return shlex.split(cmd, posix=False)
+        parts = shlex.split(cmd, posix=False)
     except Exception:
-        return cmd.split()
+        parts = cmd.split()
+    out: list[str] = []
+    for p in parts:
+        if len(p) >= 2 and p[0] == p[-1] and p[0] in "\"'":
+            p = p[1:-1]
+        out.append(p)
+    return out
+
+
+def _owned_by_stack(pid: int) -> bool:
+    """PID 是否属于本程序数据目录下的进程（防止 PID 复用误杀）。"""
+    try:
+        import psutil  # type: ignore
+
+        p = psutil.Process(pid)
+        exe = (p.exe() or "").lower()
+        root = str(paths.STACK_DIR).lower()
+        if exe.startswith(root):
+            return True
+        # cmd.exe / 系统解释器本身不在 stack 下，看命令行有没有引用 stack
+        try:
+            cmd = " ".join(p.cmdline() or []).lower()
+        except Exception:
+            cmd = ""
+        return root in cmd or root in exe
+    except Exception:
+        return False
 
 
 def _pid_alive(pid: int) -> bool:

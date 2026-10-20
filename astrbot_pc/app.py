@@ -92,6 +92,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[烛之控制台] 服务已就绪：{url}")
     print(f"[烛之控制台] 数据目录：{paths.ROOT}")
 
+    # 上次要是被强杀，子进程还挂着（NapCat 会一直连着 QQ），先收拾干净再干别的
+    try:
+        from .services import manager as _mgr
+
+        for item in _mgr.reap_stale():
+            print(f"[烛之控制台] 已清理残留进程 {item}")
+    except Exception as e:
+        print(f"[提示] 清理残留进程失败：{e}")
+
     if args.web or args.headless:
         if args.web:
             threading.Timer(0.6, lambda: webbrowser.open(url)).start()

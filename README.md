@@ -14,8 +14,8 @@
 
 | 文件 | 用法 |
 | --- | --- |
-| `AstrBotPC-1.0.0-win64-single.exe` | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒 |
-| `AstrBotPC-1.0.0-win64.zip` | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快 |
+| `AstrBotPC-1.0.1-win64-single.exe` | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒 |
+| `AstrBotPC-1.0.1-win64.zip` | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快 |
 
 不需要装 Python；Windows 10/11 自带 WebView2，更老的系统要补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。程序是绿色版，删目录即卸载（单文件版删 exe），设置与日志都写在 `%LOCALAPPDATA%\AstrBotPC`。
 
@@ -154,8 +154,8 @@ astrbot-pc/
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 # → dist\AstrBotPC\AstrBotPC.exe                 目录版
-# → dist\AstrBotPC-1.0.0-win64.zip               目录版压缩包
-# → dist\AstrBotPC-1.0.0-win64-single.exe        单文件版
+# → dist\AstrBotPC-1.0.1-win64.zip               目录版压缩包
+# → dist\AstrBotPC-1.0.1-win64-single.exe        单文件版
 ```
 
 ---
@@ -168,7 +168,7 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
    ```powershell
    set GITHUB_TOKEN=ghp_xxx
-   python tools\release.py        # 建 pc-v1.0.0 Release + 上传 zip
+   python tools\release.py        # 建 pc-v1.0.1 Release + 上传 zip
    ```
 
    tag 必须用 `pc-v<版本>` 或资产名带 `PC`——`update.py` 只认这两种，否则客户端不会提示更新。
@@ -234,13 +234,14 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 - 桌面窗口（pywebview 无边框，自绘最小化 / 最大化 / 关闭）
 - 托盘常驻：关窗收起、右键菜单启停服务、检查更新、退出；托盘动作走后台线程，不卡菜单
 - 检查更新：只认 PC 端发布（tag `pc-*` 或资产名含 `PC` / `Windows`），标题栏出「新版」胶囊，点开有说明与下载入口；30 分钟缓存，查不到就照实说
-- 进程管理（真的启停子进程，采样真实 CPU / 内存）
+- 进程管理（真的启停子进程，采样真实 CPU / 内存）；被强杀后下次启动会按记录的 PID 回收残留子进程
 - 日志浏览、筛选、跟随、导入导出
 - 实例增删改、备份建立 / 恢复 / 删除
 - 开机自启（写 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`，不需要管理员；关掉就删键）
-- 真实下载与解压（断点续传、进度回传、自动剥顶层目录）、虚拟环境与 pip 安装、OneBot 与 AstrBot 配置写入
+- 部署向导八步全部实跑通过：真下载 NapCat 与 AstrBot、装依赖、写 OneBot 与 AstrBot 配置；写的是 AstrBot 真正会读的 `data/cmd_config.json` 与 NapCat 回退读的 `onebot11.json`
+- 下载链路：实测选源（直连 + 三个加速镜像并发测速后取最快）、断点续传、半截包不算成功、20 秒没新数据就换源
 - 界面访问范围：「仅本机」/「允许局域网」真的会改监听地址（重启界面生效）
-- exe 已发布：<https://github.com/Zxin-Pro/astrbot-pc/releases>（onedir 绿色版，zip 约 22 MB）
+- exe 已发布：<https://github.com/Zxin-Pro/astrbot-pc/releases>（目录版 zip 约 22 MB，另有单文件 exe）
 - Playwright 冒烟：八页零控制台报错、零失败请求，390px 窄屏不溢出；深色主题同样过一遍
 
 还没接：
@@ -248,12 +249,31 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 - 更新只提示不自动下载覆盖（本机程序自己替换正在运行的文件太容易搞坏）
 - NapCat 首次登录需要人工扫码，向导只负责把二维码页面准备好
 
-> 更新检查目前会显示「PC 端还没有发布版本」——仓库里现在只有手机版 APK，桌面版还没出包。
-> 等 PC 端发第一个 `pc-v*` 或带 `AstrBot-PC-*.zip` 资产的 Release，界面会自动认出来。
+---
+
+## 九、更新日志
+
+### 1.0.1
+
+修的都是「点了部署以为装好了，其实一个文件没落地」这一类：
+
+- **写错了配置文件路径**：AstrBot 只读 `data/cmd_config.json`，原来写进 `data/config/cmd_config.json`，平台等于没配，装完也连不上 NapCat。NapCat 那边同理，原来写 `onebot11_default.json`，而它会先找 `onebot11_<QQ号>.json`、找不到才回退读 `onebot11.json`——只认后者。
+- **演练模式不再冒充装好**：演练只做检查不动文件，原来八步全绿、结束写「全部完成」，看着像装完了。现在结束文案是「演练通过：没有任何文件被安装」，界面上也会标出来。
+- **联网检查不再假阳性**：原来只 `HEAD github.com`，握手超时也会被 DNS 拖住几十秒再报错，而下载走的是另一条链路。改成用下载源本身测速，选不出源就直接说「连不上下载源」。
+- **下载链路重写**：直连 + 三个加速镜像并发测速取最快；20 秒收不到新数据就换源；换源保留 `.part` 续传；半截包按失败处理（原来会当成功）。
+- **子进程日志乱码**：给子进程补 `PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1`，否则输出重定向到文件时 Windows 上退回 GBK，中文变乱码、带 emoji 的行直接抛 `UnicodeEncodeError` 丢掉。
+- **命令带引号跑不起来**：`shlex.split(posix=False)` 会把引号留在 token 里，`"C:\...\python.exe"` 直接报「系统找不到指定的文件」。
+- **没装时报错文不对题**：`Path("")` 等于 `Path(".")`，明明没装却说「目录里找不到 main.py，可能装坏了」。
+- **强杀后留孤儿**：应用被强制结束时 NapCat 还连着 QQ、下次启动端口冲突。现在启动时按记录的 PID 回收，且只认数据目录下的进程，不会误杀别的。
+- 新增设置项「下载加速镜像」（`deploy.accel`），关掉就只走直连。
+
+### 1.0.0
+
+首个 PC 版：八个页面、桌面窗口与托盘、检查更新、进程管理、日志、实例与备份、开机自启、部署向导。
 
 ---
 
-## 九、常见问题
+## 十、常见问题
 
 **双击 `run.bat` 没反应？**
 用 `run-console.bat` 看报错。多半是 `python` 不在 PATH，或没装 `requirements.txt` 里的依赖。

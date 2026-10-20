@@ -156,7 +156,13 @@ export function mount(root, ctx) {
       cancelBtn.hidden = true;
       root.querySelector('[data-act="start"]').disabled = false;
       if (d.finishedAt) {
-        subEl.textContent = d.ok ? '全部完成，可以扫码登录了' : '有步骤没走通，看红字说明';
+        if (!d.ok) {
+          subEl.textContent = '有步骤没走通，看红字说明';
+        } else if (d.dryRun) {
+          subEl.textContent = '演练通过，但什么都没装';
+        } else {
+          subEl.textContent = '全部完成，可以扫码登录了';
+        }
         timerEl.hidden = false;
         timerEl.textContent = `${Math.max(1, Math.round((d.finishedAt - d.startedAt) / 1000))}s 总耗时`;
       } else {

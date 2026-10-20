@@ -30,6 +30,7 @@ DEFAULTS: dict[str, Any] = {
         "dryRun": True,           # 演练模式：走完整状态机但不真的下载
         "proxy": "",
         "mirror": "auto",         # auto | tencent | github
+        "accel": True,            # 下载 NapCat / AstrBot 时走加速镜像（国内直连常握手超时）
         "pipIndex": "https://pypi.tuna.tsinghua.edu.cn/simple",
         "astrbotMethod": "zip",   # zip | git
     },

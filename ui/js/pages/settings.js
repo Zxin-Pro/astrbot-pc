@@ -158,6 +158,11 @@ export function mount(root, ctx) {
             desc: '打开后每次部署先走一遍空流程，确认每一环都能过再真跑',
             control: sw('deploy.dryRun', get('deploy.dryRun', true)),
           })}
+          ${row({
+            title: '下载加速镜像',
+            desc: '国内直连 github.com 经常握手超时；打开后会并发挑一个能用的镜像下载 NapCat 与 AstrBot',
+            control: sw('deploy.accel', get('deploy.accel', true)),
+          })}
         </div>
       </div>
 

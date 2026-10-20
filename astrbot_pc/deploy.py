@@ -22,6 +22,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from . import config, download, envcheck, paths, probe
 from .events import bus
@@ -43,6 +44,26 @@ ASTRBOT_REPO = "https://github.com/AstrBotDevs/AstrBot.git"
 
 VENV_DIR = "venv"
 PROGRESS_MIN_GAP = 0.25  # 进度事件最多每 0.25s 发一条，别把 SSE 淹了
+
+
+def _accel_on() -> bool:
+    """加速镜像默认开；用户填了自定义地址就完全按他填的来，不再掺镜像。"""
+    val = config.get("deploy.accel", True)
+    return bool(val)
+
+
+def napcat_sources() -> list[str]:
+    custom = (config.get("deploy.napcatUrl") or "").strip()
+    if custom:
+        return [custom]
+    return download.candidates(NAPCAT_ZIP, _accel_on())
+
+
+def astrbot_sources() -> list[str]:
+    custom = (config.get("deploy.astrbotUrl") or "").strip()
+    if custom:
+        return [custom]
+    return download.candidates(ASTRBOT_ZIP, _accel_on())
 
 
 def stages() -> list[dict[str, Any]]:
@@ -183,17 +204,26 @@ class DeployRunner:
                 break
 
         with self.lock:
+            if all_ok and dry_run:
+                final = "演练通过：没有任何文件被安装。关掉演练模式再点一次才会真的装"
+            elif all_ok:
+                final = "全部完成"
+            else:
+                final = "未完成，请看失败步骤的说明"
             self.state.update({
                 "running": False, "finished": True, "ok": all_ok,
-                "message": "全部完成" if all_ok else "未完成，请看失败步骤的说明",
+                "message": final,
                 "finishedAt": int(time.time()),
                 "progress": _empty_progress(),
             })
         bus.emit("deploy", self.status())
-        bus.emit("notice", {
-            "level": "success" if all_ok else "error",
-            "text": "部署流程结束" if all_ok else "部署中断，请查看步骤详情",
-        })
+        if all_ok and dry_run:
+            notice = {"level": "info", "text": "演练结束，什么都没装上；关掉演练模式才会真装"}
+        elif all_ok:
+            notice = {"level": "success", "text": "部署流程结束"}
+        else:
+            notice = {"level": "error", "text": "部署中断，请查看步骤详情"}
+        bus.emit("notice", notice)
         try:
             envcheck.snapshot(force=True)
         except Exception:
@@ -213,10 +243,13 @@ class DeployRunner:
         if not dry_run and "QQ NT 客户端" in missing:
             parts.append("没装 QQ NT，NapCat 启动那步会失败")
         if not dry_run:
-            online = probe.http_ok("https://github.com", 6)
-            if not online:
-                return False, "连不上 github.com，先检查网络或代理再试"
-            parts.append("网络可达")
+            src = download.pick_source(napcat_sources(), timeout=8)
+            if not src:
+                return False, (
+                    "连不上下载源。国内直连 GitHub 经常握手超时，"
+                    "可以在设置里打开加速镜像，或填自己的代理地址后再试")
+            host = urlsplit(src).netloc
+            parts.append(f"下载源可用（{host}）")
         return True, "；".join(parts)
 
     def _stage_dirs(self, dry_run: bool) -> tuple[bool, str]:
@@ -234,12 +267,18 @@ class DeployRunner:
         if dry_run:
             return True, "演练模式：跳过下载（约 120 MB）"
 
-        url = (config.get("deploy.napcatUrl") or "").strip() or NAPCAT_ZIP
+        url = napcat_sources()
         zip_path = paths.TMP_DIR / "dl" / "napcat.zip"
-        self._progress("napcat", 0, 0, "正在下载 NapCat…")
-        download.fetch(url, zip_path, lambda got, total: self._progress(
-            "napcat", got, total, f"下载 NapCat {download.human_size(got)}"
-            + (f" / {download.human_size(total)}" if total else "")))
+        self._progress("napcat", 0, 0, "正在挑下载源…")
+        detail_txt = "下载 NapCat"
+        try:
+            download.fetch(url, zip_path, lambda got, total: self._progress(
+                "napcat", got, total, f"{detail_txt} {download.human_size(got)}"
+                + (f" / {download.human_size(total)}" if total else "")))
+        except download.DownloadError as e:
+            raise download.DownloadError(
+                f"{e}；已试过直连与 "
+                f"{max(0, len(url) - 1)} 个加速镜像，换个网络或填自定义地址再试") from e
 
         self._progress("napcat", 100, 100, "正在解压…")
         download.extract_zip(zip_path, target, lambda i, n: self._progress(
@@ -279,7 +318,7 @@ class DeployRunner:
                 return False, (r.stderr or r.stdout or "git clone 失败")[-400:]
             return True, f"已克隆到 {target}"
 
-        url = (config.get("deploy.astrbotUrl") or "").strip() or ASTRBOT_ZIP
+        url = astrbot_sources()
         zip_path = paths.TMP_DIR / "dl" / "astrbot.zip"
         self._progress("astrbot", 0, 0, "正在下载 AstrBot…")
         download.fetch(url, zip_path, lambda got, total: self._progress(
@@ -361,9 +400,11 @@ class DeployRunner:
 
         written: list[str] = []
 
+        # NapCat 运行时先找 onebot11_<QQ>.json，没有就回退读 onebot11.json 再另存。
+        # 部署时还不知道 QQ 号，所以写不带后缀的那份，登录后会自动复制过去。
         cfg_dir = paths.STACK_DIR / "napcat" / "config"
         cfg_dir.mkdir(parents=True, exist_ok=True)
-        (cfg_dir / f"onebot11_{inst.get('uin') or 'default'}.json").write_text(
+        (cfg_dir / "onebot11.json").write_text(
             json.dumps({
                 "network": {
                     "websocketClients": [{
@@ -386,9 +427,10 @@ class DeployRunner:
         )
         written.append(f"NapCat OneBot → {ws_port}")
 
-        data_cfg = paths.STACK_DIR / "astrbot" / "data" / "config"
-        data_cfg.mkdir(parents=True, exist_ok=True)
-        conf_path = data_cfg / "cmd_config.json"
+        # AstrBot 只认 data/cmd_config.json，写进 data/config/ 会被当作不存在
+        data_dir = paths.STACK_DIR / "astrbot" / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        conf_path = data_dir / "cmd_config.json"
         conf = {}
         if conf_path.exists():
             try:
