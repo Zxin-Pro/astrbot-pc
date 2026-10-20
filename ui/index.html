@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>烛之控制台 · AstrBot PC 端</title>
+<link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/css/app.css">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+</head>
+<body class="no-shell">
+
+<div class="app" id="app">
+
+  <header class="titlebar" id="titlebar">
+    <div class="titlebar__left pywebview-drag-region">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="22" height="22" fill="none">
+          <defs>
+            <linearGradient id="mk" x1="4" y1="3" x2="28" y2="29" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#3B82F6"/><stop offset="1" stop-color="#2563EB"/>
+            </linearGradient>
+          </defs>
+          <rect x="2.5" y="2.5" width="27" height="27" rx="9" fill="url(#mk)"/>
+          <path d="M10.2 20.4c1.5 1.9 3.5 2.9 5.9 2.9 3.1 0 5.2-1.5 5.2-3.7 0-2-1.3-3-4.2-3.7l-1.9-.4c-1.1-.3-1.6-.7-1.6-1.4 0-.9.9-1.5 2.2-1.5 1.3 0 2.5.5 3.5 1.4"
+                stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".95"/>
+          <circle cx="23.4" cy="9.6" r="2.6" fill="#EA580C"/>
+        </svg>
+      </span>
+      <div class="brandtext">
+        <strong>烛之控制台</strong>
+        <span>AstrBot 烛版 · PC 端</span>
+      </div>
+    </div>
+
+    <div class="titlebar__center pywebview-drag-region">
+      <span class="crumb" id="crumb">概览</span>
+    </div>
+
+    <div class="titlebar__right">
+      <button class="update-chip" id="btn-update" hidden aria-label="有新版本"></button>
+      <button class="ghost-btn" id="btn-palette" title="快速跳转 (Ctrl+K)" aria-label="快速跳转">
+        <span class="kbd-hint">Ctrl K</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-theme" title="切换深浅色" aria-label="切换深浅色">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/></svg>
+      </button>
+      <div class="winctrl" id="winctrl" aria-hidden="true">
+        <button data-win="min" aria-label="最小化"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></button>
+        <button data-win="max" aria-label="最大化"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="2.2" y="2.2" width="5.6" height="5.6" rx="1.2" stroke="currentColor" stroke-width="1.1"/></svg></button>
+        <button data-win="close" class="danger" aria-label="关闭"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2.6 2.6l4.8 4.8M7.4 2.6L2.6 7.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="body">
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar__scroll">
+        <p class="nav-label">工作台</p>
+        <nav class="nav" id="nav-primary" aria-label="主导航"></nav>
+        <p class="nav-label">数据与设置</p>
+        <nav class="nav" id="nav-secondary" aria-label="次级导航"></nav>
+      </div>
+
+      <div class="sidebar__foot">
+        <div class="health-card" id="health-card">
+          <div class="health-card__top">
+            <span class="health-dot" id="health-dot"></span>
+            <strong id="health-title">正在连接</strong>
+          </div>
+          <p id="health-desc">等待本地服务响应…</p>
+          <div class="health-bar"><i id="health-bar"></i></div>
+          <button class="health-card__btn" id="btn-quick-start">一键启动</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="content" id="content" tabindex="-1">
+      <div class="page-host" id="page-host"></div>
+    </main>
+
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+<div id="modal-root"></div>
+<div id="palette-root"></div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

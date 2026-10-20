@@ -1,0 +1,9 @@
+# 源码统一 LF，脚本保持 CRLF（Windows 上双击 / PowerShell 5.1 才正常）
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.ico binary
+*.png binary
+*.zip binary

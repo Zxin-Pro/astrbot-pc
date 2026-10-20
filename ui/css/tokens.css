@@ -1,0 +1,158 @@
+/* ==========================================================================
+   设计令牌 —— 唯一真源
+   色板遵守工作区规范：主色 #2563EB / 暖强调 #EA580C / 正文 #0F172A / 分隔线 #E2E8F0
+   圆角 12 基准（卡片 16 / 小控件 8），间距 4·8 节奏，动效 0.4s 入场 / 120ms 悬停
+   ========================================================================== */
+
+:root {
+  /* ---- 品牌 ---- */
+  --brand-50:  #EFF6FF;
+  --brand-100: #DBEAFE;
+  --brand-200: #BFDBFE;
+  --brand-300: #93C5FD;
+  --brand-400: #60A5FA;
+  --brand-500: #3B82F6;
+  --brand-600: #2563EB;
+  --brand-700: #1D4ED8;
+  --brand-800: #1E40AF;
+
+  --warm-50:  #FFF7ED;
+  --warm-100: #FFEDD5;
+  --warm-500: #F97316;
+  --warm-600: #EA580C;
+  --warm-700: #C2410C;
+
+  /* ---- 语义色 ---- */
+  --ok-50:   #ECFDF5;
+  --ok-500:  #10B981;
+  --ok-600:  #059669;
+  --warn-50: #FFFBEB;
+  --warn-500: #F59E0B;
+  --warn-600: #D97706;
+  --bad-50:  #FEF2F2;
+  --bad-500: #EF4444;
+  --bad-600: #DC2626;
+
+  /* ---- 中性（浅色主题）---- */
+  --bg:        #F6F8FC;
+  --bg-deep:   #EEF2F9;
+  --surface:   #FFFFFF;
+  --surface-2: #F8FAFC;
+  --surface-3: #F1F5F9;
+  --ink:       #0F172A;
+  --ink-2:     #475569;
+  --ink-3:     #64748B;
+  --ink-4:     #94A3B8;
+  --line:      #E2E8F0;
+  --line-2:    #EDF1F7;
+  --line-strong: #CBD5E1;
+
+  /* ---- 深色侧栏（固定深色，和手机版同一套观感）---- */
+  --nav-bg:         #0B1220;
+  --nav-bg-2:       #0E1729;
+  --nav-surface:    rgba(255, 255, 255, 0.055);
+  --nav-surface-2:  rgba(255, 255, 255, 0.09);
+  --nav-line:       rgba(255, 255, 255, 0.085);
+  --nav-ink:        #E6EDF7;
+  --nav-ink-2:      #9AAAC2;
+  --nav-ink-3:      #64748B;
+
+  /* ---- 圆角 ---- */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-full: 999px;
+
+  /* ---- 间距（4·8 节奏）---- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
+
+  /* ---- 字号 ---- */
+  --f-11: 11px;
+  --f-12: 12px;
+  --f-13: 13px;
+  --f-14: 14px;
+  --f-15: 15px;
+  --f-16: 16px;
+  --f-18: 18px;
+  --f-20: 20px;
+  --f-24: 24px;
+  --f-32: 32px;
+
+  /* ---- 阴影 ---- */
+  --sh-xs: 0 1px 2px rgba(15, 23, 42, .05);
+  --sh-sm: 0 1px 2px rgba(15, 23, 42, .05), 0 2px 8px -2px rgba(15, 23, 42, .06);
+  --sh-md: 0 2px 4px rgba(15, 23, 42, .04), 0 10px 24px -8px rgba(15, 23, 42, .12);
+  --sh-lg: 0 4px 8px rgba(15, 23, 42, .05), 0 24px 48px -16px rgba(15, 23, 42, .18);
+  --sh-ring: 0 0 0 3px rgba(37, 99, 235, .18);
+  --sh-nav: 0 12px 32px -12px rgba(2, 6, 23, .55);
+
+  /* ---- 动效 ---- */
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --ease-in-out: cubic-bezier(.4, 0, .2, 1);
+  --t-fast: 120ms;
+  --t-base: 200ms;
+  --t-slow: 400ms;
+
+  /* ---- 布局 ---- */
+  --titlebar-h: 44px;
+  --sidebar-w: 244px;
+  --sidebar-w-mini: 76px;
+  --content-max: 1480px;
+
+  --z-nav: 20;
+  --z-titlebar: 60;
+  --z-modal: 90;
+  --z-toast: 100;
+  --z-palette: 95;
+
+  --font: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei UI", "Microsoft YaHei",
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+}
+
+/* ============================ 深色主题 ============================ */
+
+[data-theme="dark"] {
+  --bg:        #070C16;
+  --bg-deep:   #04080F;
+  --surface:   #0E1626;
+  --surface-2: #111C2E;
+  --surface-3: #16233A;
+  --ink:       #E8EEF9;
+  --ink-2:     #A9B8CE;
+  --ink-3:     #8296B0;
+  --ink-4:     #64748B;
+  --line:      #1E2B41;
+  --line-2:    #182339;
+  --line-strong: #2A3B56;
+
+  --nav-bg:        #05090F;
+  --nav-bg-2:      #080E18;
+  --nav-surface:   rgba(255, 255, 255, 0.05);
+  --nav-surface-2: rgba(255, 255, 255, 0.085);
+  --nav-line:      rgba(255, 255, 255, 0.07);
+
+  --brand-50:  rgba(37, 99, 235, .14);
+  --brand-100: rgba(37, 99, 235, .22);
+  --warm-50:   rgba(234, 88, 12, .15);
+  --ok-50:     rgba(16, 185, 129, .14);
+  --warn-50:   rgba(245, 158, 11, .15);
+  --bad-50:    rgba(239, 68, 68, .14);
+
+  --sh-xs: 0 1px 2px rgba(0, 0, 0, .4);
+  --sh-sm: 0 1px 2px rgba(0, 0, 0, .4), 0 3px 10px -4px rgba(0, 0, 0, .5);
+  --sh-md: 0 2px 6px rgba(0, 0, 0, .35), 0 16px 32px -12px rgba(0, 0, 0, .6);
+  --sh-lg: 0 8px 16px rgba(0, 0, 0, .4), 0 32px 64px -24px rgba(0, 0, 0, .75);
+  --sh-ring: 0 0 0 3px rgba(59, 130, 246, .3);
+}

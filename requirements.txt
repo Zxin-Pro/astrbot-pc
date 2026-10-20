@@ -1,0 +1,10 @@
+# 烛之控制台 · AstrBot 烛版 PC 端 —— 运行依赖
+#
+#   pip install -r requirements.txt
+#
+# Python 3.10+（开发机验证版本 3.12.10）
+
+pywebview>=5.0        # 桌面窗口（WebView2）。不装也能跑，会自动退回浏览器模式
+psutil>=5.9           # 进程 CPU / 内存采样
+pystray>=0.19         # 托盘常驻。不装就退回「关窗即退出」
+Pillow>=10.0          # 绘制托盘图标（pystray 的图片参数）

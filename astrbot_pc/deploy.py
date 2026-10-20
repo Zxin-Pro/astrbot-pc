@@ -1,0 +1,509 @@
+"""部署向导：把「从零到能扫码登录」拆成 8 个可观察的步骤。
+
+两条路线：
+
+- ``dryRun``（默认）：只做环境检查与目录准备，下载/安装那几步只报计划不落盘，
+  方便先把界面和流程跑通；
+- 真实部署：联网拉 NapCat 与 AstrBot、建虚拟环境装依赖、写两边配置、拉起服务。
+
+真实部署全程不断推进度：``progress`` 里有 ``received / total / percent / speed``，
+界面据此画进度条，而不是干等一句「执行中…」。
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+from typing import Any, Callable
+
+from . import config, download, envcheck, paths, probe
+from .events import bus
+
+STAGES: list[dict[str, str]] = [
+    {"key": "env", "name": "环境检查", "desc": "确认 Python、磁盘空间与网络都就位"},
+    {"key": "dirs", "name": "准备目录", "desc": "建立数据目录与 stack 工作区"},
+    {"key": "napcat", "name": "获取 NapCat", "desc": "下载 NapCat 并解压到 stack/napcat"},
+    {"key": "astrbot", "name": "获取 AstrBot", "desc": "下载源码包并解压到 stack/astrbot"},
+    {"key": "deps", "name": "安装依赖", "desc": "建虚拟环境，装好 AstrBot 的 Python 依赖"},
+    {"key": "config", "name": "写入配置", "desc": "接线 OneBot 反向 WS 与 WebUI 端口"},
+    {"key": "napcat-run", "name": "启动 NapCat", "desc": "拉起 NapCat 并等二维码出现"},
+    {"key": "astrbot-run", "name": "启动 AstrBot", "desc": "拉起 AstrBot 并等 WebUI 就绪"},
+]
+
+NAPCAT_ZIP = "https://github.com/NapNeko/NapCatQQ/releases/latest/download/NapCat.Shell.Windows.Node.zip"
+ASTRBOT_ZIP = "https://codeload.github.com/AstrBotDevs/AstrBot/zip/refs/heads/master"
+ASTRBOT_REPO = "https://github.com/AstrBotDevs/AstrBot.git"
+
+VENV_DIR = "venv"
+PROGRESS_MIN_GAP = 0.25  # 进度事件最多每 0.25s 发一条，别把 SSE 淹了
+
+
+def stages() -> list[dict[str, Any]]:
+    return [dict(s) for s in STAGES]
+
+
+def _empty_progress() -> dict[str, Any]:
+    return {"key": "", "received": 0, "total": 0, "percent": 0, "speed": 0, "text": ""}
+
+
+class DeployRunner:
+    def __init__(self) -> None:
+        self.lock = threading.RLock()
+        self.thread: threading.Thread | None = None
+        self.cancel_flag = threading.Event()
+        self._last_progress = 0.0
+        self._speed_mark = (0.0, 0)
+        self.state: dict[str, Any] = {
+            "running": False,
+            "finished": False,
+            "ok": False,
+            "dryRun": True,
+            "current": "",
+            "message": "",
+            "startedAt": 0,
+            "finishedAt": 0,
+            "progress": _empty_progress(),
+            "steps": [{"key": s["key"], "name": s["name"], "desc": s["desc"],
+                       "status": "pending", "detail": "", "ms": 0} for s in STAGES],
+        }
+
+    # ---------- 查询 ----------
+
+    def status(self) -> dict[str, Any]:
+        with self.lock:
+            data = dict(self.state)
+            data["steps"] = [dict(s) for s in self.state["steps"]]
+            data["progress"] = dict(self.state["progress"])
+            return data
+
+    def _set(self, key: str, status: str, detail: str = "", ms: int = 0) -> None:
+        with self.lock:
+            for s in self.state["steps"]:
+                if s["key"] == key:
+                    s["status"] = status
+                    if detail:
+                        s["detail"] = detail
+                    if ms:
+                        s["ms"] = ms
+            self.state["current"] = key
+            self.state["message"] = detail
+            if status != "running":
+                self.state["progress"] = _empty_progress()
+        bus.emit("deploy", self.status())
+
+    def _progress(self, key: str, received: int, total: int, text: str = "") -> None:
+        """节流后再发，避免一个 100 MB 的下载把事件总线刷爆。"""
+        now = time.time()
+        mark_t, mark_b = self._speed_mark
+        speed = 0.0
+        if now - mark_t >= 0.8:
+            speed = max(0.0, (received - mark_b) / (now - mark_t))
+            self._speed_mark = (now, received)
+        with self.lock:
+            self.state["progress"] = {
+                "key": key,
+                "received": received,
+                "total": total,
+                "percent": round(received * 100 / total, 1) if total else 0,
+                "speed": round(speed / 1024 / 1024, 2),
+                "text": text,
+            }
+            self.state["message"] = text or self.state["message"]
+        if now - self._last_progress >= PROGRESS_MIN_GAP:
+            self._last_progress = now
+            bus.emit("deploy", self.status())
+
+    # ---------- 控制 ----------
+
+    def start(self, dry_run: bool = True) -> dict[str, Any]:
+        if self.thread and self.thread.is_alive():
+            return {"ok": False, "err": "部署已经在跑了"}
+        self.cancel_flag.clear()
+        self._speed_mark = (time.time(), 0)
+        self._last_progress = 0.0
+        with self.lock:
+            self.state.update({
+                "running": True, "finished": False, "ok": False, "dryRun": bool(dry_run),
+                "current": "", "message": "准备开始", "startedAt": int(time.time()), "finishedAt": 0,
+                "progress": _empty_progress(),
+            })
+            self.state["steps"] = [
+                {"key": s["key"], "name": s["name"], "desc": s["desc"],
+                 "status": "pending", "detail": "", "ms": 0} for s in STAGES
+            ]
+        self.thread = threading.Thread(target=self._run, args=(bool(dry_run),), daemon=True)
+        self.thread.start()
+        bus.emit("deploy", self.status())
+        return {"ok": True}
+
+    def cancel(self) -> dict[str, Any]:
+        self.cancel_flag.set()
+        with self.lock:
+            self.state["message"] = "正在取消…"
+        return {"ok": True}
+
+    def _run(self, dry_run: bool) -> None:
+        handlers: list[tuple[str, Callable[[bool], tuple[bool, str]]]] = [
+            ("env", self._stage_env),
+            ("dirs", self._stage_dirs),
+            ("napcat", self._stage_napcat),
+            ("astrbot", self._stage_astrbot),
+            ("deps", self._stage_deps),
+            ("config", self._stage_config),
+            ("napcat-run", self._stage_napcat_run),
+            ("astrbot-run", self._stage_astrbot_run),
+        ]
+        all_ok = True
+        for key, fn in handlers:
+            if self.cancel_flag.is_set():
+                self._set(key, "skipped", "已取消")
+                all_ok = False
+                break
+            self._set(key, "running", "执行中…")
+            t0 = time.time()
+            try:
+                ok, detail = fn(dry_run)
+            except Exception as e:  # 单步失败不该炸掉整个向导
+                ok, detail = False, f"{type(e).__name__}: {e}"
+            ms = int((time.time() - t0) * 1000)
+            if self.cancel_flag.is_set() and ok:
+                self._set(key, "skipped", "已取消", ms)
+                all_ok = False
+                break
+            self._set(key, "done" if ok else "failed", detail, ms)
+            if not ok:
+                all_ok = False
+                break
+
+        with self.lock:
+            self.state.update({
+                "running": False, "finished": True, "ok": all_ok,
+                "message": "全部完成" if all_ok else "未完成，请看失败步骤的说明",
+                "finishedAt": int(time.time()),
+                "progress": _empty_progress(),
+            })
+        bus.emit("deploy", self.status())
+        bus.emit("notice", {
+            "level": "success" if all_ok else "error",
+            "text": "部署流程结束" if all_ok else "部署中断，请查看步骤详情",
+        })
+        try:
+            envcheck.snapshot(force=True)
+        except Exception:
+            pass
+
+    # ---------- 各步骤 ----------
+
+    def _stage_env(self, dry_run: bool) -> tuple[bool, str]:
+        snap = envcheck.snapshot(force=True)
+        missing = [i["name"] for i in snap["items"] if i["status"] == "missing" and i.get("required")]
+        if "Python" in missing:
+            return False, "缺少 Python，本机无法安装依赖"
+        warn = [i["name"] for i in snap["items"] if i["status"] == "warn"]
+        parts = [f"数据目录 {snap['dataRoot']}"]
+        if warn:
+            parts.append("注意：" + "、".join(warn))
+        if not dry_run and "QQ NT 客户端" in missing:
+            parts.append("没装 QQ NT，NapCat 启动那步会失败")
+        if not dry_run:
+            online = probe.http_ok("https://github.com", 6)
+            if not online:
+                return False, "连不上 github.com，先检查网络或代理再试"
+            parts.append("网络可达")
+        return True, "；".join(parts)
+
+    def _stage_dirs(self, dry_run: bool) -> tuple[bool, str]:
+        paths.ensure_dirs()
+        for sub in ("astrbot", "napcat"):
+            (paths.STACK_DIR / sub).mkdir(parents=True, exist_ok=True)
+        (paths.TMP_DIR / "dl").mkdir(parents=True, exist_ok=True)
+        return True, f"已准备 {paths.STACK_DIR}"
+
+    def _stage_napcat(self, dry_run: bool) -> tuple[bool, str]:
+        target = paths.STACK_DIR / "napcat"
+        existing = _napcat_ready(target)
+        if existing:
+            return True, f"已就绪：{existing}"
+        if dry_run:
+            return True, "演练模式：跳过下载（约 120 MB）"
+
+        url = (config.get("deploy.napcatUrl") or "").strip() or NAPCAT_ZIP
+        zip_path = paths.TMP_DIR / "dl" / "napcat.zip"
+        self._progress("napcat", 0, 0, "正在下载 NapCat…")
+        download.fetch(url, zip_path, lambda got, total: self._progress(
+            "napcat", got, total, f"下载 NapCat {download.human_size(got)}"
+            + (f" / {download.human_size(total)}" if total else "")))
+
+        self._progress("napcat", 100, 100, "正在解压…")
+        download.extract_zip(zip_path, target, lambda i, n: self._progress(
+            "napcat", i, n, f"解压 {i}/{n}"))
+        zip_path.unlink(missing_ok=True)
+
+        ready = _napcat_ready(target)
+        if not ready:
+            return False, "解压完了但没找到启动器，检查压缩包内容"
+        size = download.dir_size(target) / 1024 / 1024
+        return True, f"已就绪（{ready}，{size:.0f} MB）"
+
+    def _stage_astrbot(self, dry_run: bool) -> tuple[bool, str]:
+        target = paths.STACK_DIR / "astrbot"
+        if (target / "main.py").exists():
+            return True, "已存在源码"
+        if target.exists() and any(target.iterdir()) and not (target / "main.py").exists():
+            keep = {".git", "data", "venv"}
+            if any(p.name not in keep for p in target.iterdir()):
+                return False, "目录里已有别的内容，请先清空 stack/astrbot"
+        if dry_run:
+            return True, "演练模式：跳过下载（源码包约 8 MB）"
+
+        method = (config.get("deploy.astrbotMethod") or "zip").strip().lower()
+        target.mkdir(parents=True, exist_ok=True)
+
+        if method == "git":
+            git = envcheck.check_git()
+            if not git["ok"]:
+                return False, "没有 Git，改成「下载压缩包」方式再试"
+            mirror = (config.get("deploy.mirror") or "").strip()
+            url = mirror or ASTRBOT_REPO
+            self._progress("astrbot", 0, 0, "正在克隆 AstrBot 源码…")
+            r = subprocess.run([git["path"], "clone", "--depth", "1", url, str(target)],
+                               capture_output=True, text=True, timeout=900)
+            if r.returncode != 0:
+                return False, (r.stderr or r.stdout or "git clone 失败")[-400:]
+            return True, f"已克隆到 {target}"
+
+        url = (config.get("deploy.astrbotUrl") or "").strip() or ASTRBOT_ZIP
+        zip_path = paths.TMP_DIR / "dl" / "astrbot.zip"
+        self._progress("astrbot", 0, 0, "正在下载 AstrBot…")
+        download.fetch(url, zip_path, lambda got, total: self._progress(
+            "astrbot", got, total, f"下载 AstrBot {download.human_size(got)}"
+            + (f" / {download.human_size(total)}" if total else "")))
+
+        self._progress("astrbot", 100, 100, "正在解压…")
+        download.extract_zip(zip_path, target, lambda i, n: self._progress(
+            "astrbot", i, n, f"解压 {i}/{n}"))
+        zip_path.unlink(missing_ok=True)
+        if not (target / "main.py").exists():
+            found = download.find_dir(target, ("main.py",))
+            if not found:
+                return False, "解压完了但没找到 main.py"
+            target = found
+        return True, f"已就绪（{target}）"
+
+    def _stage_deps(self, dry_run: bool) -> tuple[bool, str]:
+        target = paths.STACK_DIR / "astrbot"
+        req = target / "requirements.txt"
+        if not req.exists():
+            if dry_run:
+                return True, "演练模式：源码未就位，跳过 pip"
+            return False, "找不到 requirements.txt"
+        if dry_run:
+            return True, "演练模式：跳过 pip install（可能耗时数分钟）"
+
+        py = self._ensure_venv()
+        if not py:
+            return False, "虚拟环境建不起来，检查 Python 安装是否完整"
+        self._progress("deps", 0, 0, "正在安装依赖，可能要几分钟…")
+        index = (config.get("deploy.pipIndex") or "").strip()
+        argv = [str(py), "-m", "pip", "install", "-r", str(req),
+                "--disable-pip-version-check", "--no-input", "--progress-bar", "off"]
+        if index:
+            argv += ["-i", index]
+        code, tail = self._run_stream(argv, "deps", str(target))
+        if code != 0:
+            return False, (tail or "pip 失败")[-600:].replace("\n", " ")
+        return True, "依赖安装完成"
+
+    def _run_stream(self, argv: list[str], key: str, cwd: str) -> tuple[int, str]:
+        """跑子进程并把最后一行输出当成进度推给界面，避免几分钟一片死寂。"""
+        try:
+            proc = subprocess.Popen(
+                argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace", bufsize=1,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except Exception as e:
+            return 1, f"启动失败：{e}"
+        tail: list[str] = []
+        last = 0.0
+        assert proc.stdout is not None
+        for raw in proc.stdout:
+            line = raw.strip()
+            if not line or line.startswith("Requirement already satisfied"):
+                continue
+            tail.append(line)
+            if len(tail) > 40:
+                tail.pop(0)
+            now = time.time()
+            if now - last >= PROGRESS_MIN_GAP:
+                last = now
+                if self.cancel_flag.is_set():
+                    proc.terminate()
+                    return 1, "已取消"
+                self._progress(key, 0, 0, f"安装依赖 · {line[:80]}")
+        return proc.wait(), "\n".join(tail)
+
+    def _stage_config(self, dry_run: bool) -> tuple[bool, str]:
+        inst = (config.get("instances") or [{}])[0]
+        ws_port = int(inst.get("port") or paths.DEFAULT_PORTS["onebot"])
+        napcat_port = int(inst.get("napcatPort") or paths.DEFAULT_PORTS["napcat"])
+        webui_port = int(inst.get("astrbotPort") or paths.DEFAULT_PORTS["astrbot"])
+        token = inst.get("token") or ""
+        if dry_run:
+            return True, f"演练模式：将写入 OneBot → ws://127.0.0.1:{ws_port}/ws"
+
+        written: list[str] = []
+
+        cfg_dir = paths.STACK_DIR / "napcat" / "config"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        (cfg_dir / f"onebot11_{inst.get('uin') or 'default'}.json").write_text(
+            json.dumps({
+                "network": {
+                    "websocketClients": [{
+                        "name": "astrbot",
+                        "enable": True,
+                        "url": f"ws://127.0.0.1:{ws_port}/ws",
+                        "messagePostFormat": "array",
+                        "reportSelfMessage": False,
+                        "token": token,
+                        "debug": False,
+                    }],
+                    "httpServers": [],
+                    "websocketServers": [],
+                },
+                "musicSignUrl": "",
+                "enableLocalFile2Url": False,
+                "parseMultMsg": False,
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        written.append(f"NapCat OneBot → {ws_port}")
+
+        data_cfg = paths.STACK_DIR / "astrbot" / "data" / "config"
+        data_cfg.mkdir(parents=True, exist_ok=True)
+        conf_path = data_cfg / "cmd_config.json"
+        conf = {}
+        if conf_path.exists():
+            try:
+                conf = json.loads(conf_path.read_text(encoding="utf-8-sig"))
+            except Exception:
+                conf = {}
+        conf.setdefault("dashboard", {})
+        conf["dashboard"].update({"enable": True, "host": "127.0.0.1", "port": webui_port})
+
+        platforms = [p for p in (conf.get("platform") or [])
+                     if not (isinstance(p, dict) and p.get("type") == "aiocqhttp")]
+        platforms.append({
+            "id": "astrbot-pc",
+            "type": "aiocqhttp",
+            "enable": True,
+            "ws_reverse_host": "0.0.0.0",
+            "ws_reverse_port": ws_port,
+            "ws_reverse_token": token,
+        })
+        conf["platform"] = platforms
+        conf_path.write_text(json.dumps(conf, ensure_ascii=False, indent=4), encoding="utf-8")
+        written.append(f"AstrBot WebUI → {webui_port}")
+
+        return True, "；".join(written)
+
+    def _stage_napcat_run(self, dry_run: bool) -> tuple[bool, str]:
+        if dry_run:
+            return True, "演练模式：真机时这里会拉起 NapCat 并等二维码"
+        from .services import manager
+
+        res = manager.start("napcat")
+        if not res.get("ok"):
+            return False, res.get("err", "启动失败")
+        port = int(config.get("services.napcat.port", paths.DEFAULT_PORTS["napcat"]))
+        if not _wait(lambda: probe.tcp_open(port), 120):
+            return False, "120 秒内没等到 NapCat WebUI，检查日志"
+        return True, f"NapCat 已就绪，WebUI 端口 {port}"
+
+    def _stage_astrbot_run(self, dry_run: bool) -> tuple[bool, str]:
+        if dry_run:
+            return True, "演练模式：真机时这里会拉起 AstrBot 并等 WebUI"
+        from .services import manager
+
+        res = manager.start("astrbot")
+        if not res.get("ok"):
+            return False, res.get("err", "启动失败")
+        port = int(config.get("services.astrbot.port", paths.DEFAULT_PORTS["astrbot"]))
+        if not _wait(lambda: probe.tcp_open(port), 180):
+            return False, "180 秒内没等到 AstrBot WebUI，检查日志"
+        return True, f"AstrBot 已就绪，WebUI 端口 {port}"
+
+    # ---------- 工具 ----------
+
+    def _ensure_venv(self) -> Path | None:
+        """给 AstrBot 单独建虚拟环境，别把依赖装进本程序的 Python。"""
+        venv = paths.STACK_DIR / VENV_DIR
+        py = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        if py.exists():
+            return py
+        self._progress("deps", 0, 0, "正在创建虚拟环境…")
+        r = subprocess.run([sys.executable, "-m", "venv", str(venv)],
+                           capture_output=True, text=True, timeout=300)
+        if r.returncode != 0 or not py.exists():
+            return None
+        subprocess.run([str(py), "-m", "pip", "install", "--upgrade", "pip",
+                        "--disable-pip-version-check", "--no-input"],
+                       capture_output=True, text=True, timeout=600)
+        return py
+
+
+def venv_python() -> Path | None:
+    """AstrBot 用的解释器：有 venv 就用它，否则退回本程序的 Python。"""
+    venv = paths.STACK_DIR / VENV_DIR
+    for rel in ("Scripts/python.exe", "bin/python"):
+        cand = venv / rel
+        if cand.exists():
+            return cand
+    return None
+
+
+def _napcat_ready(target: Path) -> str:
+    """NapCat 装好的标志：能找到一个可执行的启动入口。"""
+    for name in ("launcher.bat", "napcat.bat", "NapCatWinBootMain.exe", "napcat.mjs"):
+        cand = target / name
+        if cand.exists():
+            return str(cand)
+    found = download.find_dir(target, ("launcher.bat", "NapCatWinBootMain.exe", "napcat.mjs"), 2)
+    if found:
+        for name in ("launcher.bat", "napcat.bat", "NapCatWinBootMain.exe", "napcat.mjs"):
+            if (found / name).exists():
+                return str(found / name)
+    return ""
+
+
+def _wait(fn: Callable[[], bool], seconds: int) -> bool:
+    end = time.time() + seconds
+    while time.time() < end:
+        try:
+            if fn():
+                return True
+        except Exception:
+            pass
+        time.sleep(1.0)
+    return False
+
+
+def runner() -> DeployRunner:
+    global _runner
+    if _runner is None:
+        _runner = DeployRunner()
+    return _runner
+
+
+_runner: "DeployRunner | None" = None
+
+
+def status() -> dict[str, Any]:
+    return runner().status()
