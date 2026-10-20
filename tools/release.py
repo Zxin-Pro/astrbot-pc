@@ -17,9 +17,9 @@ import urllib.request
 from pathlib import Path
 
 REPO = "Zxin-Pro/astrbot-pc"
-TAG = "pc-v1.1.0"
-NAME = "烛之控制台 v1.1.0 · PC 端"
-ZIP = Path(__file__).resolve().parent.parent / "dist" / "AstrBotPC-1.1.0-win64.zip"
+TAG = "pc-v1.1.1"
+NAME = "烛之控制台 v1.1.1 · PC 端"
+ZIP = Path(__file__).resolve().parent.parent / "dist" / "AstrBotPC-1.1.1-win64.zip"
 
 TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 HEADERS = {
@@ -28,16 +28,23 @@ HEADERS = {
     "Accept": "application/vnd.github+json",
 }
 
-BODY = """## 烛之控制台 v1.1.0 · AstrBot 烛版 PC 端
+BODY = """## 烛之控制台 v1.1.1 · AstrBot 烛版 PC 端
 
 把手机上那套「QQ 机器人一键包」搬到 Windows：一个自绘界面的桌面客户端，负责装 NapCat 与 AstrBot、看着两个进程、扫码登录、翻日志、备份与恢复。
 
 ### 下载
 
-- **AstrBotPC-1.1.0-win64.zip**（约 22 MB）——解压到任意目录，双击 `AstrBotPC.exe`
-- **AstrBotPC-1.1.0-win64-single.exe**——单文件版，拷一个文件就能跑（冷启动约 2 秒）
+- **AstrBotPC-1.1.1-win64.zip**（约 22 MB）——解压到任意目录，双击 `AstrBotPC.exe`
+- **AstrBotPC-1.1.1-win64-single.exe**——单文件版，拷一个文件就能跑（冷启动约 2 秒）
 - 不需要装 Python；Windows 10/11 自带 WebView2，更老的系统补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 - 绿色版：删目录即卸载，配置与日志写在 `%LOCALAPPDATA%\\AstrBotPC`
+
+### 1.1.1：图标换成手机版那张
+
+- 程序图标、任务栏、托盘、网页标签页统一用手机版同一张插画（`ui/assets/app-icon.png`）
+- 小尺寸（16/24/32）单独按脸部裁一张再缩——整张画缩到这个尺寸只剩一块深色
+- 托盘图标不再手绘，直接读同一份资源；文件缺失时才退回手绘兜底
+- 顺带：标题栏左边那个蓝色方块也换成同一个人
 
 ### 1.1.0：整套界面换成液态玻璃
 

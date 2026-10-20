@@ -14,8 +14,8 @@
 
 | 文件 | 用法 |
 | --- | --- |
-| `AstrBotPC-1.1.0-win64-single.exe` | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒 |
-| `AstrBotPC-1.1.0-win64.zip` | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快 |
+| `AstrBotPC-1.1.1-win64-single.exe` | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒 |
+| `AstrBotPC-1.1.1-win64.zip` | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快 |
 
 不需要装 Python；Windows 10/11 自带 WebView2，更老的系统要补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。程序是绿色版，删目录即卸载（单文件版删 exe），设置与日志都写在 `%LOCALAPPDATA%\AstrBotPC`。
 
@@ -158,8 +158,8 @@ astrbot-pc/
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 # → dist\AstrBotPC\AstrBotPC.exe                 目录版
-# → dist\AstrBotPC-1.1.0-win64.zip               目录版压缩包
-# → dist\AstrBotPC-1.1.0-win64-single.exe        单文件版
+# → dist\AstrBotPC-1.1.1-win64.zip               目录版压缩包
+# → dist\AstrBotPC-1.1.1-win64-single.exe        单文件版
 ```
 
 ---
@@ -172,7 +172,7 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
    ```powershell
    set GITHUB_TOKEN=ghp_xxx
-   python tools\release.py        # 建 pc-v1.1.0 Release + 上传 zip
+   python tools\release.py        # 建 pc-v1.1.1 Release + 上传 zip
    ```
 
    tag 必须用 `pc-v<版本>` 或资产名带 `PC`——`update.py` 只认这两种，否则客户端不会提示更新。
@@ -273,6 +273,16 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 ---
 
 ## 九、更新日志
+
+### 1.1.1
+
+图标换成手机版那张：
+
+- **图源**：`ui/assets/app-icon.png`，就是手机版仓库里那张 1254×1254 的插画。exe 图标、任务栏、托盘、网页标签页全用它，桌面端和手机版这才像同一个产品。
+- **小尺寸专项**：整张画缩到 16px 只剩一块深色，所以 16 / 24 / 32 三帧单独按脸部裁一个方框再缩（`FACE_BOX = (560, 130, 1180, 750)`），48 以上才用整张。任务栏和 Alt+Tab 里能看出是个人脸。
+- **生成方式**：`tools/make_icon.py` 从一张 PNG 出 `build/app.ico`（16–256 七帧）+ `favicon-32/180.png` + `mark-44.png`，纯 Pillow，不再依赖无头浏览器渲染 SVG。
+- **托盘**：不再手绘蓝底弯月，直接读 `ui/assets/mark-44.png`；文件缺失才退回手绘兜底。
+- **标题栏**：左边那个蓝色方块标记换成同一个人（`.mark` 加圆角裁切）。
 
 ### 1.1.0
 

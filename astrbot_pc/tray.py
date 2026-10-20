@@ -26,7 +26,27 @@ def available() -> bool:
 
 
 def _make_image(size: int = 64) -> Any:
-    """托盘图标：蓝底圆角方块 + 白色弯月 + 橙色圆点，和 favicon 一致。"""
+    """托盘图标：和窗口、exe 用同一张画。
+
+    优先读 ``ui/assets/mark-44.png``（由 tools/make_icon.py 裁出脸部生成）——
+    托盘只有 16~32px，用整张插画会糊成一团，脸部特写才看得出是谁。
+    文件缺失时退回手绘的蓝底弯月，保证托盘不会因为少个资源就哑掉。
+    """
+    from PIL import Image
+
+    try:
+        src = paths.UI_DIR / "assets" / "mark-44.png"
+        if src.is_file():
+            with Image.open(src) as im:
+                return im.convert("RGBA").resize((size, size), Image.LANCZOS)
+    except Exception:
+        pass
+
+    return _fallback_image(size)
+
+
+def _fallback_image(size: int = 64) -> Any:
+    """手绘兜底：蓝底圆角方块 + 白色弯月 + 橙色圆点。"""
     from PIL import Image, ImageDraw
 
     scale = 4
