@@ -25,5 +25,6 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
-# 离线包验证截图
+# 离线包与功能验证截图
 shots-offline/
+shots-model/

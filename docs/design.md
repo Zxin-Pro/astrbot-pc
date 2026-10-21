@@ -168,3 +168,18 @@ wheel 是按打包时的 Python 版本挑的（cp312 / win_amd64）。用户机�
 
 **按名字匹配一批东西，等于埋一个静默失效的开关。**
 `_stage_env` 里原来写 `if "Python" in missing`，而 `missing` 装的是各项的显示名，那一项叫「Python 运行时」——这个判断从加上那天起就没生效过，永远返回 False，代码还看着挺合理。凡是拿显示文案当条件的地方，都该改成按稳定的 key（`python` / `qq` / `git`）判，显示名只用来给人看。
+
+**对接别人的配置，先照着它自己写出来的样子抄。**
+AstrBot v4 收到扁平的 provider 项会当场迁移成 `provider_sources`（存 base_url / key）+ `provider`（存模型名，用 `provider_source_id` 指回去）两层，并且**重写整个 `cmd_config.json`**。我们最初按老格式写，每次启动都被迁一遍；界面读的又是扁平字段，迁移后 `apiBase` / `hasKey` 全空，看着像「保存没生效」。改成直接写最终结构、读的时候顺着 `provider_source_id` 找连接信息，两个问题一起消失。判断依据是它自己迁移后的文件长什么样，不是文档里的字段表。
+
+**模型和人格根本不在同一个文件里。**
+`cmd_config.json` 里那个 `persona` 数组在 v4 已标 deprecated，写它等于没写——真正的人格在 `data/data_v4.db` 的 `personas` 表里。只改 JSON 会得到「配置里明明有、AstrBot 却说 Loaded 1 personas」。改数据库要注意它是 WAL 模式，`-wal` / `-shm` 要一起处理。
+
+**同一个色名可能已经被「错误提示」占用了。**
+`.field__hint` 是 `--bad-600` 红色，`instances.js` 拿它当校验失败的位置。模型页把三句普通说明也写成这个类，整页看着像处处报错。现在分两个：`.field__hint` 只给错误，`.field__help` 是灰色说明。用现成 class 之前先看它在别处是干什么的。
+
+**异步回来别整页重画。**
+中转站检测最长要等十几秒，回来时调一次 `render()` 整页重写，用户刚贴进去的密钥和模型名就没了，还会以为是自己点错了。会变的那一块单独放进一个容器（`#relay-slot`），回来只重画它。判断标准很朴素：用户可能正在输入的区域，不能被异步结果整块替换。
+
+**重建 exe 之前，先确认打包机的 pythonnet 是完整的。**
+pythonnet 3.x 靠 `clr_loader` + `cffi` 去找 `Python.Runtime.dll`；这两个包缺了，PyInstaller 一声不响，打出来的 exe 也能启动、能起 HTTP 服务，但一开窗口就抛 `webview.errors.WebViewException: You must have pythonnet installed in order to use pywebview`——冒烟只跑 `--headless` 是照不出来的，必须真的开一次窗口。判据两条：`python -c "import clr, webview"` 能过；`dist\AstrBotPC\_internal` 里能看到 `clr_loader` 与 `_cffi_backend*.pyd`。顺带：PyInstaller 自己还依赖 `altgraph`、`pefile`（连带 `ordlookup`）、`packaging`，少一个连 `--version` 都跑不起来。

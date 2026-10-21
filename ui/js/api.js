@@ -65,6 +65,14 @@ export const api = {
   saveSettings: (patch) => request('POST', '/api/settings', { patch }),
   resetSettings: () => request('POST', '/api/reset'),
 
+  llm: () => request('GET', '/api/llm'),
+  llmModel: (payload) => request('POST', '/api/llm/model', payload),
+  llmPersona: (payload) => request('POST', '/api/llm/persona', payload),
+  llmModels: (payload) => request('POST', '/api/llm/models', payload),
+  relay: () => request('GET', '/api/relay'),
+
+  openUrl: (url) => request('POST', '/api/open', { url }),
+
   open: (target) => request('POST', '/api/open', { target }),
   checkUpdate: () => request('GET', '/api/update/check'),
   update: () => request('GET', '/api/update'),

@@ -14,9 +14,9 @@
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `AstrBotPC-1.3.1-win64-offline.zip` | 约 285 MB | **懒人版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码、全部依赖 wheel，还有一份便携 Python 3.12——部署全程不联网，也不用另装 Python |
-| `AstrBotPC-1.3.1-win64.zip` | 约 22 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载，pip 装依赖，本机要有 Python 3.10+ |
-| `AstrBotPC-1.3.1-win64-single.exe` | 约 22 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒（原因见下）。部署时联网，同样要本机 Python |
+| `AstrBotPC-1.4.0-win64-offline.zip` | 约 275 MB | **懒人版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码、全部依赖 wheel，还有一份便携 Python 3.12——部署全程不联网，也不用另装 Python |
+| `AstrBotPC-1.4.0-win64.zip` | 约 18 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载，pip 装依赖，本机要有 Python 3.10+ |
+| `AstrBotPC-1.4.0-win64-single.exe` | 约 18 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒（原因见下）。部署时联网，同样要本机 Python |
 
 三个包是**同一份程序**，界面和功能完全一样，区别只在「部署安装那几分钟怎么过」。
 
@@ -73,6 +73,7 @@ AstrBotPC/
 | --- | --- |
 | **概览** | 今日在线、消息数、异常数、服务在线数；两个服务的状态卡；24 小时消息节奏；环境信息；最近日志 |
 | **部署** | 八步向导：环境检查 → 准备目录 → 取 NapCat → 取 AstrBot → 装依赖 → 写配置 → 启 NapCat → 启 AstrBot。带「演练模式」，可以先空跑看清每一步；真实模式带下载进度条与实时 pip 输出 |
+| **模型** | 中转站、密钥、模型名、人格都在这儿配：贴一个密钥就能把 AstrBot 的 provider 和人格写好，顺手显示中转站版本号与延迟 |
 | **服务** | NapCat / AstrBot 各自的启动、重启、停止，CPU 环形图、内存、运行时长、重启次数；端口连通性表；快捷入口 |
 | **日志** | 按文件浏览，级别筛选，关键字搜索，跟随滚动，导出 / 导入 |
 | **登录** | 每 3 秒自动抓 NapCat 二维码，支持换一张、存图片；右侧是扫码排障清单 |
@@ -131,6 +132,7 @@ astrbot-pc/
 │  ├─ deploy.py     八步部署流程（演练 / 真实）
 │  ├─ download.py   断点续传下载、解压、剥顶层目录
 │  ├─ envcheck.py   Python / Git / QQ NT / 磁盘 / 网络的体检
+│  ├─ llm.py        AstrBot 的模型与人格配置（写 cmd_config.json 与 data_v4.db）
 │  ├─ logs.py       日志列表、尾部读取、跟随
 │  ├─ instances.py  多实例 CRUD
 │  ├─ backup.py     备份、恢复、占用统计
@@ -144,14 +146,14 @@ astrbot-pc/
 │  ├─ index.html    外壳：标题栏、侧栏、路由出口、底图、弹层与命令面板
 │  ├─ css/          tokens.css（设计变量）+ app.css（布局与组件）+ glass.css（液态玻璃覆盖层）
 │  └─ js/           main / router / store / api / components / charts / icons / util / glass
-│     └─ pages/     dashboard / deploy / services / logs / login / instances / backups / settings
+│     └─ pages/     dashboard / deploy / model / services / logs / login / instances / backups / settings
 ├─ tools/           冒烟截图、打包、图标生成与调试脚本
 │  ├─ build_exe.ps1 一条命令出 exe + 发布 zip（含离线版）
 │  ├─ build_offline.py 把 NapCat / AstrBot 源码 / wheel 收进 resources\
 │  ├─ release.py    建 GitHub Release 并上传 zip 与离线包
 │  ├─ push_api.py   只放行 api.github.com 时的推送通道
 │  ├─ make_icon.py  从一张 PNG 出多尺寸 .ico 与 favicon
-│  ├─ smoke.py      八页零报错冒烟
+│  ├─ smoke.py      九页零报错冒烟
 │  ├─ probe_glass.py         玻璃/实色 × 深浅 的全部截图
 │  ├─ probe_glass_qa.py      卡片实际渲染色算对比度 + 滚动帧率
 │  ├─ probe_glass_overlay.py 弹层、吐司、降低透明度与降低动效
@@ -175,9 +177,9 @@ python tools\build_offline.py --lazy       # 缺什么下什么，连便携 Pyth
 
 powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 # → dist\AstrBotPC\AstrBotPC.exe                     目录版
-# → dist\AstrBotPC-1.3.1-win64.zip                   目录版压缩包（22 MB，联网装）
-# → dist\AstrBotPC-1.3.1-win64-single.exe            单文件版（22 MB，联网装）
-# → dist\AstrBotPC-1.3.1-win64-offline.zip           懒人版（285 MB，不联网也不用装 Python）
+# → dist\AstrBotPC-1.4.0-win64.zip                   目录版压缩包（18 MB，联网装）
+# → dist\AstrBotPC-1.4.0-win64-single.exe            单文件版（18 MB，联网装）
+# → dist\AstrBotPC-1.4.0-win64-offline.zip           懒人版（275 MB，不联网也不用装 Python）
 ```
 
 没有 `resources\` 时最后一行会自动跳过，其余产物不变。不加 `--lazy` 也能出离线版，只是那一包还需要用户机器上有 Python。
@@ -192,8 +194,8 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
    ```powershell
    set GITHUB_TOKEN=ghp_xxx
-   python tools\release.py        # 建 pc-v1.2.0 Release + 上传 zip 与离线包
-   python tools\upload_asset.py dist\AstrBotPC-1.3.1-win64-single.exe --tag pc-v1.2.0
+   python tools\release.py        # 建 pc-v1.4.0 Release + 上传 zip 与离线包
+   python tools\upload_asset.py dist\AstrBotPC-1.4.0-win64-single.exe --tag pc-v1.4.0
    ```
 
    tag 必须用 `pc-v<版本>` 或资产名带 `PC`——`update.py` 只认这两种，否则客户端不会提示更新。
@@ -304,9 +306,10 @@ wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。目录版和单�
 - 界面访问范围：「仅本机」/「允许局域网」真的会改监听地址（重启界面生效）
 - 离线包：`resources\` 里带 NapCat、AstrBot 源码与依赖 wheel，部署全程不联网；缺哪样就那一步走网络，不影响其它步
 - 懒人版：`resources\python\` 再带一份便携 Python 3.12，用户机器上一个 Python 都不用装；实测能建 venv、能离线装 151 个包
-- exe 已发布：<https://github.com/Zxin-Pro/astrbot-pc/releases>（懒人版约 285 MB，普通版约 22 MB，另有单文件 exe）
+- exe 已发布：<https://github.com/Zxin-Pro/astrbot-pc/releases>（懒人版约 275 MB，普通版约 18 MB，另有单文件 exe）
 - 液态玻璃界面：深浅两套主题都有；底图、玻璃、颗粒三层叠出透色，关掉即回到原实色界面
-- Playwright 冒烟：八页零控制台报错、零失败请求，390px 窄屏不溢出；深色主题同样过一遍
+- 模型页：贴一个密钥就把 AstrBot 的 provider 与默认模型写好，人格直接写进 `data_v4.db`；中转站卡片显示站点版本号与延迟，一键跳注册（邀请码已带好）
+- Playwright 冒烟：九页零控制台报错、零失败请求，390px 窄屏不溢出；深色主题同样过一遍
 
 还没接：
 
@@ -316,6 +319,19 @@ wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。目录版和单�
 ---
 
 ## 九、更新日志
+
+### 1.4.0
+
+新增「模型」页，AstrBot 的模型和人格不用再进它的 WebUI 点：
+
+- **新增**：贴一个密钥就能用。地址、模型名、人格都预填好，密钥一填点「保存并启用」，直接写进 AstrBot 的配置。
+- **新增**：中转站卡片显示站点名、延迟和版本号（`/api/v1/settings/public` 的 `data.version`），一键跳注册，邀请码 `CZLT` 已经带在链接里。
+- **新增**：人格预设两套（烛心 / 助手），也可以自己写；保存时写进 `data/data_v4.db` 的 `personas` 表并设为默认人格。
+- **修**：AstrBot v4 会把 provider 拆成 `provider_sources` + `provider` 两层，我们按这个结构读写，避免它每次启动都迁移一遍重写配置。老版本只有扁平结构时也照旧能写。
+- **修**：模型页的说明文字误用了校验错误的红色样式，改成中性的灰色（`.field__help`）。
+- **修**：390px 下中转站卡片标题被挤到按钮下面，窄屏改为「图标 + 标题」一行、徽标与按钮一行。
+- **修**：中转站检测回来时整页重画，会把刚贴进去的密钥冲掉（检测最长等十几秒）；现在只重画中转站那一格。
+- 保存后要重启 AstrBot 才生效——页面上有按钮，也写清了原因。
 
 ### 1.3.1
 
@@ -342,9 +358,9 @@ wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。目录版和单�
 
 离线包，装的时候一步网都不用联：
 
-- **新增离线版安装包**：`AstrBotPC-1.3.1-win64-offline.zip` 里带 `resources\`，预置 NapCat、AstrBot 源码和全部依赖 wheel。解压后点「开始部署」，从第一个文件到 pip 装完都不联网。
+- **新增离线版安装包**：`AstrBotPC-1.4.0-win64-offline.zip` 里带 `resources\`，预置 NapCat、AstrBot 源码和全部依赖 wheel。解压后点「开始部署」，从第一个文件到 pip 装完都不联网。
 - **两种包是同一份程序**：`paths.RESOURCES_DIR` 认 exe 同级的 `resources\`；有就解压，没有就照旧联网下载。删掉 `resources\` 就等于退回普通版。
-- **不强塞进 exe**：单文件版仍是 22 MB。几百 MB 塞进去每次启动都得往临时目录解压，冷启动几十秒，得不偿失。
+- **不强塞进 exe**：单文件版仍是 18 MB。几百 MB 塞进去每次启动都得往临时目录解压，冷启动几十秒，得不偿失。
 - **环境体检多一行**：部署页右侧「环境体检」上方显示「离线资源」，写明内置了什么、这次会不会联网；缺的部分照常走网络。
 - **依赖走本地仓库**：`pip install --no-index --find-links <wheels>`。
 - **演练模式文案跟着变**：有离线包时，确认弹层和横幅改成「从内置离线包解压，不用联网」。
@@ -420,7 +436,7 @@ Windows 会把不常用的图标折叠进「^」里，点开找一下。如果�
 说明你已经在最新版。程序只认 `pc-*` 的 tag 或名字带 `PC` 的资产，不会拿手机版 APK 冒充桌面版；查不到 Release 时会照实说「桌面版会单独出包」。
 
 **下载 285 MB 的懒人版太慢？**
-下 22 MB 的目录版也一样能用，只是部署那一步要联网拉 NapCat（约 118 MB）和 AstrBot 依赖，还得本机有 Python。国内直连 GitHub 经常握手超时，向导会自动换加速镜像，也可以在「设置 → 部署」里关掉加速或填自己的地址。
+下 18 MB 的目录版也一样能用，只是部署那一步要联网拉 NapCat（约 118 MB）和 AstrBot 依赖，还得本机有 Python。国内直连 GitHub 经常握手超时，向导会自动换加速镜像，也可以在「设置 → 部署」里关掉加速或填自己的地址。
 
 **懒人版和单文件版到底差在哪？**
 懒人版是个文件夹（解压出来一堆文件），但里面带齐了 NapCat、AstrBot、依赖和 Python，部署时什么都不用管；单文件版就是一个 exe，拷到哪都能跑，但它不带这些资源，部署时要联网、还要本机有 Python。功能一样，差的是「部署那几分钟怎么过」。

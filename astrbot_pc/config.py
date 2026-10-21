@@ -59,6 +59,13 @@ DEFAULTS: dict[str, Any] = {
             "createdAt": 0,
         }
     ],
+    "llm": {
+        # 中转站（烛心推荐的那家）。改这里可以换成别的 OpenAI 兼容网关。
+        "relayBase": "https://worldcodes.online",
+        "apiBase": "https://worldcodes.online/v1",
+        "model": "",
+        "personaId": "",
+    },
     "backup": {"keep": 10, "scope": "all"},
     "logs": {"maxLines": 2000, "compact": True, "autoScroll": True},
     "update": {"repo": "Zxin-Pro/astrbot-pc", "channel": "stable"},

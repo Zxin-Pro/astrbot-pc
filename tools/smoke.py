@@ -8,13 +8,36 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-PAGES = ["dashboard", "deploy", "services", "logs", "login", "instances", "backups", "settings"]
+PAGES = ["dashboard", "deploy", "model", "services", "logs", "login", "instances", "backups", "settings"]
+#: 本机可用的浏览器：Playwright 的 msedge 通道只认用户级安装路径，
+#: 而 Windows 自带的 Edge 通常在 Program Files (x86)。这里挨个试，能开就行。
+EDGE_PATHS = [
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+]
+CHROME_PATHS = [
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+]
+
+
+def launch_browser(pw):
+    """挑一个能用的浏览器：环境变量 > 已装 Edge > 已装 Chrome > Playwright 自带 Chromium。"""
+    forced = os.environ.get("SMOKE_BROWSER", "").strip()
+    if forced:
+        return pw.chromium.launch(executable_path=forced, headless=True)
+    for path in EDGE_PATHS + CHROME_PATHS:
+        if Path(path).exists():
+            return pw.chromium.launch(executable_path=path, headless=True)
+    return pw.chromium.launch(headless=True)
+
 
 
 def main() -> int:
@@ -33,7 +56,7 @@ def main() -> int:
     failed: list[str] = []
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(channel="msedge", headless=True)
+        browser = launch_browser(pw)
         ctx = browser.new_context(viewport={"width": args.width, "height": args.height})
         ctx.add_init_script(f"localStorage.setItem('dsh.theme', '{args.theme}')")
         page = ctx.new_page()

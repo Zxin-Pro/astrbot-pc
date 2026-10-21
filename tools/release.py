@@ -17,12 +17,12 @@ import urllib.request
 from pathlib import Path
 
 REPO = "Zxin-Pro/astrbot-pc"
-TAG = "pc-v1.3.1"
-NAME = "烛之控制台 v1.3.1 · PC 端"
+TAG = "pc-v1.4.0"
+NAME = "烛之控制台 v1.4.0 · PC 端"
 DIST = Path(__file__).resolve().parent.parent / "dist"
-ZIP = DIST / "AstrBotPC-1.3.1-win64.zip"
-OFFLINE = DIST / "AstrBotPC-1.3.1-win64-offline.zip"
-SINGLE = DIST / "AstrBotPC-1.3.1-win64-single.exe"
+ZIP = DIST / "AstrBotPC-1.4.0-win64.zip"
+OFFLINE = DIST / "AstrBotPC-1.4.0-win64-offline.zip"
+SINGLE = DIST / "AstrBotPC-1.4.0-win64-single.exe"
 
 TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 HEADERS = {
@@ -39,19 +39,31 @@ BODY = """## {name}
 
 | 文件 | 大小 | 适合谁 | 装的时候 |
 |---|---|---|---|
-| **AstrBotPC-1.3.1-win64-offline.zip**（懒人版） | 约 285 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
-| AstrBotPC-1.3.1-win64.zip（目录版） | 约 22 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
-| AstrBotPC-1.3.1-win64-single.exe（单文件版） | 约 22 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
+| **AstrBotPC-1.4.0-win64-offline.zip**（懒人版） | 约 275 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
+| AstrBotPC-1.4.0-win64.zip（目录版） | 约 18 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
+| AstrBotPC-1.4.0-win64-single.exe（单文件版） | 约 18 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
 
 **懒人版**里带着 NapCat、AstrBot 源码、151 个依赖 wheel，还有一份便携 Python 3.12。下载一个包，解压，双击 `AstrBotPC.exe`，点「开始部署」，全程不用打开浏览器、不用装任何东西、不用连网。
 
-**单文件版**是「节目录都省了」的形态：一个 22 MB 的 exe 拷到哪都能跑（冷启动约 2 秒）。代价是它不带离线资源，部署时要联网，而且你自己机器上得有一个 Python 3.10+（打包版会依次找 `py -3`、PATH 里的 `python`、常见安装目录）。
+**单文件版**是「节目录都省了」的形态：一个 18 MB 的 exe 拷到哪都能跑（冷启动约 2 秒）。代价是它不带离线资源，部署时要联网，而且你自己机器上得有一个 Python 3.10+（打包版会依次找 `py -3`、PATH 里的 `python`、常见安装目录）。
 
 三个包是同一份程序，界面和功能完全一样，区别只在「部署安装那几分钟怎么过」。
 
 - Windows 10/11 自带 WebView2，更老的系统补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 - 绿色版：删目录即卸载，配置与日志写在 `%LOCALAPPDATA%\\AstrBotPC`
 - 懒人版体积大是因为资源摆在 `AstrBotPC.exe` 旁边的 `resources\\` 里，删掉它就是目录版
+
+### 1.4.0：多了一个「模型」页
+
+装好之后最麻烦的一步其实是配模型：要进 AstrBot 的 WebUI、找 provider 模板、填 base_url、贴密钥、再挑模型名。现在这些都在客户端里做完。
+
+- 新增「模型」页：中转站卡片显示站点名、延迟和**站点版本号**，一键跳注册（邀请码 `CZLT` 已带在链接里，文案标着「烛心推荐用这家」）
+- 贴一个密钥就行：接口地址默认 `https://worldcodes.online/v1`，模型名默认 `gpt-4o-mini`，点「拉模型」能直接从接口列出来的模型里选
+- 保存并启用：把 provider 写进 AstrBot 的 `data/cmd_config.json`，同时设成默认模型
+- 人格预设两套（烛心 / 助手），也可以自己写；写进 `data/data_v4.db` 的 `personas` 表并设为默认人格
+- 修：AstrBot v4 会把 provider 拆成 `provider_sources` + `provider` 两层并在启动时迁移重写；现在直接按最终结构读写，不再每次启动都被迁一遍，界面也不会「保存了却显示没配」
+- 修：中转站检测回来时会整页重画，把刚贴进去的密钥冲掉；现在只重画中转站那一格
+- 保存后需要重启 AstrBot，页面上有按钮，也写清了为什么
 
 ### 1.3.1：装好之后右侧不再显示「没装」
 

@@ -1235,8 +1235,10 @@ body.no-shell .titlebar { grid-template-columns: 1fr auto 1fr; }
 .page-host.is-loading { opacity: .55; transition: opacity var(--t-fast) var(--ease); }
 
 .field__label { font-size: var(--f-12); font-weight: 500; color: var(--ink-2); }
+/* 校验错误用 .field__hint（红色）；普通说明用 .field__help（灰色），别混着用 */
 .field__hint { font-size: var(--f-11); color: var(--bad-600); min-height: 0; }
 .field__hint:empty { display: none; }
+.field__help { font-size: var(--f-11); color: var(--ink-4); line-height: 1.5; }
 .field--full { grid-column: 1 / -1; }
 
 .input--sm, .select--sm { height: 32px; padding: 0 10px; font-size: var(--f-12); border-radius: var(--r-sm); }
@@ -1859,4 +1861,51 @@ body.no-shell .titlebar { grid-template-columns: 1fr auto 1fr; }
 @media (max-width: 720px) {
   .update-row { flex-wrap: wrap; }
   .update-row .grow { flex: 1 1 100%; order: 3; }
+}
+
+/* 模型页：中转站一行、输入框带按钮、人格预设 */
+.relay-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.relay-row__ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--brand-500) 26%, var(--line));
+  background: color-mix(in srgb, var(--brand-500) 10%, transparent);
+  color: var(--brand-600);
+}
+.relay-row .grow { min-width: 0; flex: 1 1 200px; }
+.relay-row strong { display: block; font-size: var(--f-14); font-weight: 600; color: var(--ink); }
+.relay-row small { display: block; font-size: var(--f-12); color: var(--ink-4); margin-top: 2px; }
+
+.field-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.field-inline .input { flex: 1 1 180px; min-width: 0; }
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.row-actions .hint { font-size: var(--f-12); color: var(--ink-4); }
+
+.preset-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.preset-row .btn { flex-direction: column; align-items: flex-start; gap: 2px; height: auto; padding: 10px 14px; }
+.preset-row .btn small { font-size: var(--f-11); color: var(--ink-4); font-weight: 400; }
+
+@media (max-width: 720px) {
+  /* 窄屏：图标和标题占一行，状态徽标和按钮换到下一行。
+     别给 .grow 加 order——那会把标题甩到按钮后面，读起来是断的。 */
+  .relay-row { align-items: flex-start; }
+  .relay-row .grow { flex: 1 1 calc(100% - 46px); }
+  .relay-row .btn { flex: 1 1 auto; justify-content: center; }
 }

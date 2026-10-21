@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs
 
-from . import backup, config, deploy, envcheck, instances, logs, paths, probe, startup, stats, update
+from . import backup, config, deploy, envcheck, instances, llm, logs, paths, probe, startup, stats, update
 from .events import bus
 from .services import manager
 
@@ -326,6 +326,14 @@ def settings_reset(**_: Any) -> dict[str, Any]:
 
 @route("POST", r"/api/open")
 def open_target(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    # 外部链接：只放行 http(s)，别让这个口子变成能启动任意程序
+    link = str(body.get("url") or "").strip()
+    if link:
+        if not re.match(r"^https?://", link, re.I):
+            return {"ok": False, "err": "只支持 http/https 链接"}
+        webbrowser.open(link)
+        return {"ok": True, "url": link}
+
     target = str(body.get("target") or "")
     mapping = {
         "data": paths.ROOT,
@@ -355,6 +363,37 @@ def open_target(body: dict[str, Any], **_: Any) -> dict[str, Any]:
         return {"ok": True, "path": str(p)}
     except Exception as e:
         return {"ok": False, "err": str(e)}
+
+
+# ---------------- 模型与人格（写进 AstrBot 自己的配置） ----------------
+
+@route("GET", r"/api/llm")
+def llm_state(**_: Any) -> dict[str, Any]:
+    return llm.current()
+
+
+@route("POST", r"/api/llm/model")
+def llm_model(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return llm.apply_model(
+        str(body.get("apiBase") or ""),
+        str(body.get("apiKey") or ""),
+        str(body.get("model") or ""),
+    )
+
+
+@route("POST", r"/api/llm/persona")
+def llm_persona(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return llm.apply_persona(str(body.get("personaId") or ""), str(body.get("prompt") or ""))
+
+
+@route("POST", r"/api/llm/models")
+def llm_models(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return llm.list_models(str(body.get("apiKey") or ""), str(body.get("apiBase") or ""))
+
+
+@route("GET", r"/api/relay")
+def relay_info(**_: Any) -> dict[str, Any]:
+    return llm.relay_info()
 
 
 @route("GET", r"/api/update/check")

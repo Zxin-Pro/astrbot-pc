@@ -1,8 +1,9 @@
-/** 路由：八个页面，懒加载，切换时保留滚动位置。 */
+/** 路由：页面懒加载，切换时保留滚动位置。 */
 
 export const ROUTES = [
   { key: 'dashboard', title: '概览', icon: 'dashboard', group: 'primary', load: () => import('./pages/dashboard.js') },
   { key: 'deploy', title: '部署', icon: 'rocket', group: 'primary', load: () => import('./pages/deploy.js') },
+  { key: 'model', title: '模型', icon: 'cpu', group: 'primary', load: () => import('./pages/model.js') },
   { key: 'services', title: '服务', icon: 'server', group: 'primary', load: () => import('./pages/services.js') },
   { key: 'logs', title: '日志', icon: 'terminal', group: 'primary', load: () => import('./pages/logs.js') },
   { key: 'login', title: '登录', icon: 'qrcode', group: 'primary', load: () => import('./pages/login.js') },
