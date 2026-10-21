@@ -411,7 +411,7 @@ async function main() {
       refreshState().then(renderHealth);
       return;
     }
-    if (meta && /^[1-8]$/.test(e.key)) {
+    if (meta && /^[1-9]$/.test(e.key)) {
       e.preventDefault();
       const r = ROUTES[Number(e.key) - 1];
       if (r) router.go(r.key);

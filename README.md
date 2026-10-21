@@ -83,7 +83,7 @@ AstrBotPC/
 
 全局能力：
 
-- `Ctrl+K` 命令面板（页面与动作分两组，`↑↓` 选择、`↵` 进入），`Ctrl+R` 刷新，`Ctrl+1…8` 直接跳页，`Esc` 关弹层
+- `Ctrl+K` 命令面板（页面与动作分两组，`↑↓` 选择、`↵` 进入），`Ctrl+R` 刷新，`Ctrl+1…9` 直接跳页，`Esc` 关弹层
 - 事件用 SSE 推送（`status` / `log` / `deploy` / `notice`），断线自动重连并回落到轮询
 - 标题栏的「新版 vX」小胶囊：发现 PC 端有新版本才出现，点开就是更新说明与下载入口
 - 所有交互走键盘可达路径，`focus-visible` 有明确描边，遵循 `prefers-reduced-motion`

@@ -3,9 +3,9 @@
 #
 # 产物：
 #   dist\AstrBotPC\AstrBotPC.exe                    目录版，双击即用（需带 _internal）
-#   dist\AstrBotPC-<版本>-win64.zip                 目录版的压缩包（约 22 MB，部署时联网）
+#   dist\AstrBotPC-<版本>-win64.zip                 目录版的压缩包（约 18 MB，部署时联网）
 #   dist\AstrBotPC-<版本>-win64-single.exe          单文件版，拷一个文件就能跑
-#   dist\AstrBotPC-<版本>-win64-offline.zip         带 resources\ 的离线版（约 260 MB，部署全程不联网）
+#   dist\AstrBotPC-<版本>-win64-offline.zip         带 resources\ 的离线版（约 275 MB，部署全程不联网）
 #
 # 离线版只在 resources\ 存在时才出。先跑 python tools\build_offline.py 把资源收齐。
 #
@@ -20,19 +20,33 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
 
+# 有的机器上 python 只在注册表里，PATH 里没有（Get-Command 会空手而归），
+# 所以先问 PATH，再退到常见安装位置，最后才让命令自己报错。
+$py = (Get-Command python -ErrorAction SilentlyContinue).Source
+if (-not $py) {
+  foreach ($cand in @(
+    (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'),
+    (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311\python.exe'),
+    'C:\Python312\python.exe',
+    'C:\Python311\python.exe'
+  )) { if (Test-Path $cand) { $py = $cand; break } }
+}
+if (-not $py) { throw '找不到 python.exe：装一个 Python 3.10+ 或者把路径加到 PATH' }
+Write-Host "[0/6] python = $py"
+
 Write-Host '[1/6] gen icon'
-python tools\make_icon.py
+& $py tools\make_icon.py
 if ($LASTEXITCODE -ne 0) { throw 'icon failed' }
 
 Write-Host '[2/6] clean'
 Remove-Item -Recurse -Force .build, .build-onefile, dist, dist-onefile -ErrorAction SilentlyContinue
 
 Write-Host '[3/6] pyinstaller onedir'
-python -m PyInstaller build.spec --noconfirm --clean --workpath .build --distpath dist
+& $py -m PyInstaller build.spec --noconfirm --clean --workpath .build --distpath dist
 if ($LASTEXITCODE -ne 0) { throw 'onedir build failed, see log above' }
 
 Write-Host '[4/6] pyinstaller onefile'
-python -m PyInstaller build_onefile.spec --noconfirm --clean --workpath .build-onefile --distpath dist-onefile
+& $py -m PyInstaller build_onefile.spec --noconfirm --clean --workpath .build-onefile --distpath dist-onefile
 if ($LASTEXITCODE -ne 0) { throw 'onefile build failed, see log above' }
 Copy-Item (Join-Path $root 'dist-onefile\AstrBotPC.exe') (Join-Path $root "dist\AstrBotPC-$Version-win64-single.exe") -Force
 
