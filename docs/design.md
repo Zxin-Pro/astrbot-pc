@@ -183,3 +183,5 @@ AstrBot v4 收到扁平的 provider 项会当场迁移成 `provider_sources`（�
 
 **重建 exe 之前，先确认打包机的 pythonnet 是完整的。**
 pythonnet 3.x 靠 `clr_loader` + `cffi` 去找 `Python.Runtime.dll`；这两个包缺了，PyInstaller 一声不响，打出来的 exe 也能启动、能起 HTTP 服务，但一开窗口就抛 `webview.errors.WebViewException: You must have pythonnet installed in order to use pywebview`——冒烟只跑 `--headless` 是照不出来的，必须真的开一次窗口。判据两条：`python -c "import clr, webview"` 能过；`dist\AstrBotPC\_internal` 里能看到 `clr_loader` 与 `_cffi_backend*.pyd`。顺带：PyInstaller 自己还依赖 `altgraph`、`pefile`（连带 `ordlookup`）、`packaging`，少一个连 `--version` 都跑不起来。
+
+**打包脚本别再指望 PATH 里那个 python。** `tools/build_exe.ps1` 现在先 `Get-Command python`，找不到再退到 `%LOCALAPPDATA%\Programs\Python\Python3xx\python.exe`；这台机器上 `python` 在 PATH 里也能被 `Get-Command` 找到之前，脚本一直报「无法将 python 项识别为 cmdlet」。另有一个更迷惑的坑：从别的程序里起 PowerShell 去调 exe 时，子进程环境里必须有 `PATHEXT`，否则 `& 'C:\...\python.exe'` 会被 PowerShell 当成「文档」去激活，报 `无法在管道中激活文档`，看起来像是 python 不存在。
