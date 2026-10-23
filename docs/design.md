@@ -222,3 +222,11 @@ pythonnet 3.x 靠 `clr_loader` + `cffi` 去找 `Python.Runtime.dll`；这两个�
 
 **旧版的全局端口不是新实例的保留端口。**
 多实例迁移时 `migrate_ports()` 一开始把 `services.napcat.port` / `services.astrbot.port` 也放进已占用集合，结果第一个实例被挤到 6100/6186，界面上的端口和用户记忆里的 6099/6185 对不上。这两个键是 1.0.0 之前「全局只有一对进程」时代的遗留配置，迁移时只该保留真正的全局项（UI 端口），实例端口从默认值重新分配。
+
+## 窗口动画（1.0.1）
+
+- **无边框窗口没有系统过渡动画**：Windows 只给带 `WS_CAPTION` 的窗口做最小化 / 还原动画。同一个窗口临时加回 `WS_CAPTION|WS_THICKFRAME` 立刻就有多帧渐变（13/74/105/135/165/202/236 ms），去掉就只剩一帧跳变。所以 frameless 客户端要自己做淡入淡出。
+- **任务栏按钮依赖 `WS_MINIMIZEBOX`**：`FormBorderStyle.None` 让 WinForms 的 `CreateParams` 不再带这个样式位，点任务栏图标既不能最小化、也不会触发系统动画。补样式位用 `SetWindowLongW(GWL_STYLE)` + `SetWindowPos(..., SWP_FRAMECHANGED)`，两个毛病一起好。别改托管属性 `ControlBox/MinimizeBox`——在活着的无边框 Form 上改会让进程直接退出，连异常都没有。
+- **`WS_EX_LAYERED` 是可以用在运行中的 WebView2 窗口上的**：加 `SetLayeredWindowAttributes` 调 alpha，内容正常渲染，不白屏。淡入前先把 alpha 压到 42 再让窗口显示，淡出后在窗口已经缩下去之后再摘样式，顺序反了会看到一次跳亮。
+- **最大化盖住任务栏**：无边框窗口最大化时 rect 是整屏（含任务栏）。子类化 `WM_GETMINMAXINFO`，在**调用默认过程之后**改 `ptMaxPosition/ptMaxSize`（先改会被默认过程覆盖），按 `MonitorFromWindow` + `GetMonitorInfoW` 的工作区算。
+- **最小化别直接用 Win32 `ShowWindow`**：绕过 WinForms 的 `WindowState` 逻辑，WebView2 的合成表面不知道窗口被藏起来了，还原时只剩一块白。走 `window.minimize()/maximize()/restore()`，样式位负责让系统动画与任务栏按钮成立。

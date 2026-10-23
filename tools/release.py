@@ -17,12 +17,12 @@ import urllib.request
 from pathlib import Path
 
 REPO = "Zxin-Pro/astrbot-pc"
-TAG = "pc-v1.0.0"
-NAME = "烛之控制台 v1.0.0 · PC 端"
+TAG = "pc-v1.0.1"
+NAME = "烛之控制台 v1.0.1 · PC 端"
 DIST = Path(__file__).resolve().parent.parent / "dist"
-ZIP = DIST / "AstrBotPC-1.0.0-win64.zip"
-OFFLINE = DIST / "AstrBotPC-1.0.0-win64-offline.zip"
-SINGLE = DIST / "AstrBotPC-1.0.0-win64-single.exe"
+ZIP = DIST / "AstrBotPC-1.0.1-win64.zip"
+OFFLINE = DIST / "AstrBotPC-1.0.1-win64-offline.zip"
+SINGLE = DIST / "AstrBotPC-1.0.1-win64-single.exe"
 
 TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 HEADERS = {
@@ -39,9 +39,9 @@ BODY = """## {name}
 
 | 文件 | 大小 | 适合谁 | 装的时候 |
 |---|---|---|---|
-| **AstrBotPC-1.0.0-win64-offline.zip**（懒人版） | 约 280 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
-| AstrBotPC-1.0.0-win64.zip（目录版） | 约 23 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
-| AstrBotPC-1.0.0-win64-single.exe（单文件版） | 约 23 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
+| **AstrBotPC-1.0.1-win64-offline.zip**（懒人版） | 约 280 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
+| AstrBotPC-1.0.1-win64.zip（目录版） | 约 23 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
+| AstrBotPC-1.0.1-win64-single.exe（单文件版） | 约 23 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
 
 **懒人版**里带着 NapCat、AstrBot 源码、151 个依赖 wheel，还有一份便携 Python 3.12。下载一个包，解压，双击 `AstrBotPC.exe`，点「开始部署」，全程不用打开浏览器、不用装任何东西、不用连网。
 
@@ -52,6 +52,13 @@ BODY = """## {name}
 - Windows 10/11 自带 WebView2，更老的系统补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 - 绿色版：删目录即卸载，配置与日志写在 `%LOCALAPPDATA%\\AstrBotPC`
 - 懒人版体积大是因为资源摆在 `AstrBotPC.exe` 旁边的 `resources\\` 里，删掉它就是目录版
+
+### 1.0.1：任务栏与窗口手感
+
+- **任务栏图标能最小化了**：无边框窗口缺 `WS_MINIMIZEBOX`，以前只有标题栏那个小按钮能最小化，点任务栏图标没反应；现在两个都能用。
+- **最小化 / 还原有过渡动画**：无边框窗口不参与 Windows 自带的窗口动画，客户端自己补了一段淡入淡出（约 170 ms；系统关掉「显示动画」时自动不做）。
+- **最大化不再盖住任务栏**：以前最大化铺满整屏，任务栏被压在最下面点不到；现在按显示器工作区最大化。
+- **修掉「还原后白板」**：最小化改走 pywebview / WinForms 的正常路径，WebView2 的内容不会在还原时变成一整块白。
 
 ### 1.0.0：版本重新起算，补上六件硬功能
 

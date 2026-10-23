@@ -14,9 +14,9 @@
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `AstrBotPC-1.0.0-win64-offline.zip` | 约 280 MB | **懒人版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码、全部依赖 wheel，还有一份便携 Python 3.12——部署全程不联网，也不用另装 Python |
-| `AstrBotPC-1.0.0-win64.zip` | 约 23 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载，pip 装依赖，本机要有 Python 3.10+ |
-| `AstrBotPC-1.0.0-win64-single.exe` | 约 23 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒（原因见下）。部署时联网，同样要本机 Python |
+| `AstrBotPC-1.0.1-win64-offline.zip` | 约 280 MB | **懒人版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码、全部依赖 wheel，还有一份便携 Python 3.12——部署全程不联网，也不用另装 Python |
+| `AstrBotPC-1.0.1-win64.zip` | 约 23 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载，pip 装依赖，本机要有 Python 3.10+ |
+| `AstrBotPC-1.0.1-win64-single.exe` | 约 23 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒（原因见下）。部署时联网，同样要本机 Python |
 
 三个包是**同一份程序**，界面和功能完全一样，区别只在「部署安装那几分钟怎么过」。
 
@@ -192,9 +192,9 @@ python tools\build_offline.py --lazy       # 缺什么下什么，连便携 Pyth
 
 powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 # → dist\AstrBotPC\AstrBotPC.exe                     目录版
-# → dist\AstrBotPC-1.0.0-win64.zip                   目录版压缩包（23 MB，联网装）
-# → dist\AstrBotPC-1.0.0-win64-single.exe            单文件版（23 MB，联网装）
-# → dist\AstrBotPC-1.0.0-win64-offline.zip           懒人版（280 MB，不联网也不用装 Python）
+# → dist\AstrBotPC-1.0.1-win64.zip                   目录版压缩包（23 MB，联网装）
+# → dist\AstrBotPC-1.0.1-win64-single.exe            单文件版（23 MB，联网装）
+# → dist\AstrBotPC-1.0.1-win64-offline.zip           懒人版（280 MB，不联网也不用装 Python）
 ```
 
 没有 `resources\` 时最后一行会自动跳过，其余产物不变。不加 `--lazy` 也能出离线版，只是那一包还需要用户机器上有 Python。
@@ -209,8 +209,8 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
    ```powershell
    set GITHUB_TOKEN=ghp_xxx
-   python tools\release.py        # 建 pc-v1.0.0 Release + 上传 zip 与离线包
-   python tools\upload_asset.py dist\AstrBotPC-1.0.0-win64-single.exe --tag pc-v1.0.0
+   python tools\release.py        # 建 pc-v1.0.1 Release + 上传 zip 与离线包
+   python tools\upload_asset.py dist\AstrBotPC-1.0.1-win64-single.exe --tag pc-v1.0.1
    ```
 
    tag 必须用 `pc-v<版本>` 或资产名带 `PC`——`update.py` 只认这两种，否则客户端不会提示更新。
@@ -338,6 +338,15 @@ wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。目录版和单�
 ---
 
 ## 九、更新日志
+
+### 1.0.1
+
+窗口手感这一版，属于 1.0.x 的小修：
+
+- **任务栏图标能最小化了**：无边框窗口缺 `WS_MINIMIZEBOX`，以前只有标题栏那个小按钮能最小化，点任务栏图标没反应；现在两个都能用。
+- **最小化 / 还原有过渡动画**：无边框窗口不参与 Windows 自带的窗口动画，客户端自己补了一段淡入淡出（约 170 ms；系统关掉「显示动画」时自动不做）。
+- **最大化不再盖住任务栏**：以前最大化铺满整屏，底下的任务栏被压住点不到；现在按显示器工作区最大化。
+- **修掉「还原后白板」**：最小化改走 pywebview / WinForms 的正常路径，WebView2 的内容不会在还原时变成一整块白。
 
 ### 1.0.0
 
