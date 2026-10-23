@@ -310,7 +310,7 @@ wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。目录版和单�
 - exe 已发布：<https://github.com/Zxin-Pro/astrbot-pc/releases>（懒人版约 280 MB，普通版约 23 MB，另有单文件 exe）
 - 液态玻璃界面：深浅两套主题都有；底图、玻璃、颗粒三层叠出透色，关掉即回到原实色界面
 - 模型页：贴一个密钥就把 AstrBot 的 provider 与默认模型写好，人格直接写进 `data_v4.db`；中转站卡片显示站点版本号与延迟，一键跳注册（邀请码已带好）
-- Playwright 冒烟：九页零控制台报错、零失败请求，390px 窄屏不溢出；深色主题同样过一遍
+- Playwright 冒烟：十页零控制台报错、零失败请求，390px 窄屏不溢出；深色主题同样过一遍
 
 还没接：
 
