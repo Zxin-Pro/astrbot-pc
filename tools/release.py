@@ -17,12 +17,12 @@ import urllib.request
 from pathlib import Path
 
 REPO = "Zxin-Pro/astrbot-pc"
-TAG = "pc-v1.4.0"
-NAME = "烛之控制台 v1.4.0 · PC 端"
+TAG = "pc-v1.5.0"
+NAME = "烛之控制台 v1.5.0 · PC 端"
 DIST = Path(__file__).resolve().parent.parent / "dist"
-ZIP = DIST / "AstrBotPC-1.4.0-win64.zip"
-OFFLINE = DIST / "AstrBotPC-1.4.0-win64-offline.zip"
-SINGLE = DIST / "AstrBotPC-1.4.0-win64-single.exe"
+ZIP = DIST / "AstrBotPC-1.5.0-win64.zip"
+OFFLINE = DIST / "AstrBotPC-1.5.0-win64-offline.zip"
+SINGLE = DIST / "AstrBotPC-1.5.0-win64-single.exe"
 
 TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 HEADERS = {
@@ -39,19 +39,31 @@ BODY = """## {name}
 
 | 文件 | 大小 | 适合谁 | 装的时候 |
 |---|---|---|---|
-| **AstrBotPC-1.4.0-win64-offline.zip**（懒人版） | 约 275 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
-| AstrBotPC-1.4.0-win64.zip（目录版） | 约 18 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
-| AstrBotPC-1.4.0-win64-single.exe（单文件版） | 约 18 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
+| **AstrBotPC-1.5.0-win64-offline.zip**（懒人版） | 约 280 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
+| AstrBotPC-1.5.0-win64.zip（目录版） | 约 23 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
+| AstrBotPC-1.5.0-win64-single.exe（单文件版） | 约 23 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
 
 **懒人版**里带着 NapCat、AstrBot 源码、151 个依赖 wheel，还有一份便携 Python 3.12。下载一个包，解压，双击 `AstrBotPC.exe`，点「开始部署」，全程不用打开浏览器、不用装任何东西、不用连网。
 
-**单文件版**是「节目录都省了」的形态：一个 18 MB 的 exe 拷到哪都能跑（冷启动约 2 秒）。代价是它不带离线资源，部署时要联网，而且你自己机器上得有一个 Python 3.10+（打包版会依次找 `py -3`、PATH 里的 `python`、常见安装目录）。
+**单文件版**是「连目录都省了」的形态：一个 23 MB 的 exe 拷到哪都能跑（冷启动约 2 秒）。代价是它不带离线资源，部署时要联网，而且你自己机器上得有一个 Python 3.10+（打包版会依次找 `py -3`、PATH 里的 `python`、常见安装目录）。
 
 三个包是同一份程序，界面和功能完全一样，区别只在「部署安装那几分钟怎么过」。
 
 - Windows 10/11 自带 WebView2，更老的系统补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 - 绿色版：删目录即卸载，配置与日志写在 `%LOCALAPPDATA%\\AstrBotPC`
 - 懒人版体积大是因为资源摆在 `AstrBotPC.exe` 旁边的 `resources\\` 里，删掉它就是目录版
+
+### 1.5.0：排障、实例和自定义都搬过来了
+
+手机版上那些「出问题能自救」的功能，PC 端这次补齐了；顺手把备份、实例和界面自由度也抬了一档。
+
+- 新增「排障」页：一键体检（14 项，带颜色和下一步建议）、内置命令行（只在数据目录里跑，超时连子进程一起收）、崩溃记录（同一错误 120 秒内合并计数）、一键导出诊断包（脱敏配置 + 日志尾巴，可直接下载 / 删除）、重置部署进度
+- 备份升级：后台打包不再卡界面，有进度和取消；支持从文件恢复、每日自动备份、下载备份、占用统计；修「后台其实已经打包成功，界面却立刻提示失败」
+- 实例真正能用：设为当前、一键接线（把端口与令牌写进 NapCat 和 AstrBot）、自动挑空闲端口、端口被占用时直接标出来；修「改了端口不生效」和「只认第一个实例」
+- 服务页新增 AstrBot 控制台账号卡：还是默认密码就直接告诉你，忘了就生成 16 位强密码并同时写两套哈希；另加「手动对接 AstrBot」
+- 设置更自由：自定义背景图（自动加可读性遮罩）、玻璃三档（关 / 轻薄 / 浓厚）、精简模式、局域网访问地址、存储占用与清理、隐私政策 / 用户协议 / 免责声明、匿名统计开关
+- 日志页可以清空、删除、下载单个文件；模型页新增「测连通」；登录页补了扫码风控提示
+- 十个页面，Ctrl+1…9 直接跳常用页；390px 窄屏与深色主题都过了一遍冒烟
 
 ### 1.4.0：多了一个「模型」页
 

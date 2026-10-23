@@ -49,6 +49,14 @@ body {
   background: linear-gradient(180deg, var(--aurora-veil-1), var(--aurora-veil-2));
 }
 
+/* 用户自选背景图时，单独加厚一层遮罩：图再亮再花，正文也要 ≥ 4.5:1 */
+.backdrop.has-bg::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.44));
+}
+[data-theme="dark"] .backdrop.has-bg::after {
+  background: linear-gradient(180deg, rgba(3, 7, 14, 0.6), rgba(3, 7, 14, 0.76));
+}
+
 /* 极细颗粒。玻璃是「有材质」的，纯数学渐变会显得像塑料 */
 .grain {
   position: fixed;
@@ -377,4 +385,12 @@ body {
 /* 低端显卡 / 小窗口：把模糊半径和层数都降一档 */
 @media (max-width: 900px) {
   :root { --glass-blur: 14px; --glass-blur-lg: 18px; }
+}
+
+/* 三档厚度：轻薄（默认）/ 厚重。off 由 glass.css 整张停用，不在这里处理。
+   写在媒体查询之后，保证小窗口下用户选的厚重也生效。 */
+:root[data-glass-level="soft"] { --glass-blur: 14px; --glass-blur-lg: 20px; }
+:root[data-glass-level="strong"] { --glass-blur: 28px; --glass-blur-lg: 40px; --glass-sat: 1.35; }
+@media (max-width: 900px) {
+  :root[data-glass-level="strong"] { --glass-blur: 22px; --glass-blur-lg: 30px; }
 }

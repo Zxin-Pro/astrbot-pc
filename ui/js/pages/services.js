@@ -1,7 +1,7 @@
 /** 服务：唯一的「开关总闸」。进程、端口、资源、快速入口全在这一页。 */
 
 import { api } from '../api.js';
-import { confirmDialog, notify } from '../components.js';
+import { confirmDialog, modal, notify } from '../components.js';
 import { ring } from '../charts.js';
 import { icon } from '../icons.js';
 import { esc, bytes, dur, num, copyText } from '../util.js';
@@ -48,6 +48,11 @@ export function mount(root, ctx) {
       </div>
 
       <div class="section">
+        <div class="section-head"><h2>AstrBot 控制台账号</h2></div>
+        <div class="card card--tight" id="creds-card"></div>
+      </div>
+
+      <div class="section">
         <div class="section-head"><h2>常见处理</h2></div>
         <div class="grid grid--3">
           <button class="card card--tight is-interactive tile-btn" data-act="open-data">
@@ -62,12 +67,51 @@ export function mount(root, ctx) {
             <span class="tile-btn__ico">${icon('route', 18)}</span>
             <span><strong>NapCat WebUI</strong><small>查看账号与消息统计</small></span>
           </button>
+          <button class="card card--tight is-interactive tile-btn" data-act="rewire">
+            <span class="tile-btn__ico">${icon('route', 18)}</span>
+            <span><strong>手动对接 AstrBot</strong><small>把当前实例的地址与令牌重写进配置</small></span>
+          </button>
         </div>
       </div>
     </div>`;
 
   const grid = root.querySelector('#svc-grid');
   const portBody = root.querySelector('#port-body');
+  const credsCard = root.querySelector('#creds-card');
+  let creds = null;
+
+  function renderCreds() {
+    const c = creds;
+    if (!c) {
+      credsCard.innerHTML = '<p class="muted" style="font-size:12.5px">读取账号信息…</p>';
+      return;
+    }
+    if (!c.ok) {
+      credsCard.innerHTML = `<div class="notice notice--warn"><div class="notice__body"><strong>还没读到控制台账号</strong><p class="muted">${esc(c.err || '先部署并启动一次 AstrBot')}</p></div></div>`;
+      return;
+    }
+    credsCard.innerHTML = `
+      <div class="card-head" style="margin-bottom:10px">
+        <div>
+          <h3 style="font-size:14px">${esc(c.username || 'astrbot')}</h3>
+          <p class="muted" style="font-size:12px">${c.password ? '默认密码，建议改掉' : '密码是哈希存的，忘了只能重设'} · 端口 ${esc(String(c.port || 6185))}</p>
+        </div>
+        <div class="inline">
+          <button class="btn btn--sm" data-act="copy-user">${icon('copy', 13)}复制账号</button>
+          ${c.password ? `<button class="btn btn--sm" data-act="copy-pass">${icon('copy', 13)}复制密码</button>` : ''}
+          <button class="btn btn--sm btn--ghost" data-act="reset-pass">重设密码</button>
+          <button class="btn btn--sm btn--primary" data-act="open-console">${icon('external', 13)}打开控制台</button>
+        </div>
+      </div>
+      ${c.password ? `<p class="mono" style="font-size:14px;margin:0">${esc(c.username)} / ${esc(c.password)}</p>` : `<p class="field__help" style="margin:0">${esc(c.hint || '')}</p>`}
+      ${c.changeRequired ? '<p class="field__hint" style="color:var(--warn)">AstrBot 要求下次登录后修改密码。</p>' : ''}`;
+  }
+
+  async function loadCreds() {
+    const res = await api.consoleCreds();
+    creds = res;
+    renderCreds();
+  }
 
   function render() {
     const svc = ctx.store.services || {};
@@ -147,6 +191,59 @@ export function mount(root, ctx) {
   }
 
   render();
+  loadCreds();
+
+  function resetPassModal() {
+    const gen = () => {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+      let out = '';
+      for (let i = 0; i < 16; i++) out += chars[Math.floor(Math.random() * chars.length)];
+      return out;
+    };
+    modal({
+      title: '重设控制台密码',
+      desc: '密码会同时写成 md5 与 pbkdf2 两种哈希，重启 AstrBot 后生效。至少 8 位，含大小写字母和数字。',
+      body: `
+        <label class="field"><span class="field__label">用户名</span>
+          <input class="input mono" name="user" value="${esc(creds?.username || 'astrbot')}" /></label>
+        <label class="field"><span class="field__label">新密码</span>
+          <input class="input mono" name="pass" value="${gen()}" /></label>
+        <div class="row-actions">
+          <button class="btn btn--sm" type="button" data-act="gen">${icon('refresh', 14)}换一个</button>
+          <span class="field__help">生成的是 16 位随机密码，复制走再保存。</span>
+        </div>`,
+      actions: [
+        { label: '取消' },
+        {
+          label: '保存并复制',
+          primary: true,
+          run: async (close, rootEl) => {
+            const user = rootEl.querySelector('[name="user"]').value.trim();
+            const pass = rootEl.querySelector('[name="pass"]').value.trim();
+            if (pass.length < 8 || !/[A-Z]/.test(pass) || !/[a-z]/.test(pass) || !/\d/.test(pass)) {
+              notify.warn('密码至少 8 位，且要同时有大小写字母和数字');
+              return false;
+            }
+            const res = await api.consoleCredsReset(user, pass);
+            if (!res.ok) {
+              notify.error(res.err || '重设失败');
+              return false;
+            }
+            await copyText(`${user} / ${pass}`);
+            notify.ok('已保存，账号密码已复制；重启 AstrBot 后生效');
+            creds = { ...(creds || {}), ...res, username: user };
+            renderCreds();
+            close();
+          },
+        },
+      ],
+      onMount: ({ root: el }) => {
+        el.querySelector('[data-act="gen"]')?.addEventListener('click', () => {
+          el.querySelector('[name="pass"]').value = gen();
+        });
+      },
+    });
+  }
 
   async function act(key, action) {
     if (busy) return;
@@ -196,6 +293,25 @@ export function mount(root, ctx) {
     } else if (action === 'open-webui' || action === 'open-napcat') {
       const res = await api.open(action === 'open-webui' ? 'webui' : 'napcat');
       if (!res.ok) notify.error(res.err || '打不开');
+    } else if (action === 'open-console') {
+      const res = await api.open('webui');
+      if (!res.ok) notify.error(res.err || '打不开');
+    } else if (action === 'copy-user') {
+      await copyText(creds?.username || 'astrbot');
+      notify.ok('账号已复制');
+    } else if (action === 'copy-pass') {
+      await copyText(creds?.password || '');
+      notify.ok(creds?.password ? '密码已复制' : '默认密码不是 astrbot，只能重设');
+    } else if (action === 'reset-pass') {
+      resetPassModal();
+    } else if (action === 'rewire') {
+      const inst = (ctx.store.instances || []).find((x) => x.active) || (ctx.store.instances || [])[0];
+      if (!inst) return notify.warn('先去「实例」页建一个实例');
+      btn.disabled = true;
+      const res = await api.instanceApply(inst.id);
+      btn.disabled = false;
+      if (!res.ok) return notify.error(res.err || '接线失败');
+      notify.ok('已把当前实例写进 AstrBot / NapCat 配置，重启服务后生效');
     } else if (['start', 'stop', 'restart'].includes(action) && btn.dataset.svc) {
       await act(btn.dataset.svc, action);
     }

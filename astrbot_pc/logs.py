@@ -87,6 +87,52 @@ def discover() -> list[dict[str, Any]]:
     return out
 
 
+ROOTS = ("log", "stack")  # 只允许动这两个目录下的文件
+
+
+def allowed(path: str) -> Path | None:
+    """把外部传进来的路径收进白名单，避免 /api/logs/clear 变成任意文件删除器。"""
+    try:
+        p = Path(str(path or "")).resolve()
+    except Exception:
+        return None
+    for root in (paths.LOG_DIR, paths.STACK_DIR):
+        try:
+            p.relative_to(root.resolve())
+        except ValueError:
+            continue
+        return p if p.is_file() else None
+    return None
+
+
+def clear(path: str) -> dict[str, Any]:
+    """清空内容但保留文件——服务正开着日志句柄，删文件会让它写进虚空。"""
+    p = allowed(path)
+    if p is None:
+        return {"ok": False, "err": "不允许操作这个文件"}
+    try:
+        freed = p.stat().st_size
+        with open(p, "r+b") as fh:
+            fh.truncate(0)
+        return {"ok": True, "freed": freed, "path": str(p)}
+    except Exception as e:
+        return {"ok": False, "err": f"清空失败：{e}"}
+
+
+def delete(path: str) -> dict[str, Any]:
+    p = allowed(path)
+    if p is None:
+        return {"ok": False, "err": "不允许操作这个文件"}
+    if str(follower.current() or "") == str(p):
+        follower.unfollow()
+    try:
+        freed = p.stat().st_size
+        p.unlink()
+        return {"ok": True, "freed": freed, "path": str(p)}
+    except Exception as e:
+        return {"ok": False, "err": f"删除失败：{e}"}
+
+
 def tail(path: str, lines: int = 400, compact: bool = True) -> dict[str, Any]:
     p = Path(path)
     if not p.is_file():

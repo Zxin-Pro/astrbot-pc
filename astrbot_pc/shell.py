@@ -68,6 +68,25 @@ class WinApi:
         except Exception as e:
             return {"ok": False, "err": str(e)}
 
+    def pick(self, kind: str = "zip") -> dict[str, Any]:
+        """弹系统文件选择框，给「从文件恢复备份」用。
+
+        Args:
+            kind: zip 只筛 .zip，other 放开所有文件。
+
+        Returns:
+            {"ok": True, "path": 选中路径或空串}，失败时带 err。
+        """
+        import webview  # type: ignore
+
+        try:
+            types = ("备份包 (*.zip)",) if kind == "zip" else ("所有文件 (*.*)",)
+            picked = self._window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=False, file_types=types)
+            path = picked[0] if picked else ""
+            return {"ok": True, "path": path}
+        except Exception as e:
+            return {"ok": False, "err": str(e)}
+
     def show(self) -> dict[str, Any]:
         return _show_window()
 

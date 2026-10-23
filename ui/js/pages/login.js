@@ -68,6 +68,15 @@ export function mount(root, ctx) {
           </div>
 
           <div class="card">
+            <div class="notice notice--warn">
+              <div class="notice__body">
+                <strong>先看一眼风控</strong>
+                <p>新注册的号、刚改过密码、异地登录，都容易被腾讯拦下。二维码扫完一直转圈或提示环境异常时，先在手机官方 QQ 上确认能正常登录，再回来重试；连续扫码别超过三五次，频率越高越容易被标记。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
             <div class="card-head">
               <h3>扫码登录不上？</h3>
               <button class="btn btn--sm btn--ghost" data-act="to-logs">看日志${icon('chevron', 13)}</button>

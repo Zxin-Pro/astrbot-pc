@@ -66,13 +66,21 @@ export function modal({ title, desc = '', body = '', actions = [], wide = false,
   actions.forEach((a) => {
     const btn = h(`<button class="btn ${a.primary ? 'btn--primary' : ''} ${a.danger ? 'btn--danger' : ''}">${esc(a.label)}</button>`);
     btn.addEventListener('click', async () => {
-      if (a.onClick) {
-        btn.disabled = true;
-        const keep = await a.onClick({ root: backdrop, close });
-        btn.disabled = false;
-        if (keep !== false) close();
-      } else {
+      // a.run 是后加的写法：返回 false 表示「别关」，方便表单校验失败时留在弹层里。
+      const run = a.run || a.onClick;
+      if (!run) {
         close();
+        return;
+      }
+      btn.disabled = true;
+      try {
+        // 老页面写的是 run(close, rootEl)，新页面可以写 run({root,close})。
+        const keep = a.run ? await a.run(close, backdrop) : await a.onClick({ root: backdrop, close });
+        if (keep !== false) close();
+      } catch (err) {
+        console.error('[modal] action failed', err);
+      } finally {
+        btn.disabled = false;
       }
     });
     foot.appendChild(btn);

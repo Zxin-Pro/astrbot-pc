@@ -1,7 +1,7 @@
 /** 日志：定位问题的地方。跟随、过滤、搜索、导出。 */
 
 import { api } from '../api.js';
-import { notify } from '../components.js';
+import { confirmDialog, notify } from '../components.js';
 import { icon } from '../icons.js';
 import { esc, bytes, debounce, copyText, timeAgo } from '../util.js';
 import { pageHead } from './common.js';
@@ -28,7 +28,9 @@ export function mount(root, ctx) {
         title: '日志',
         desc: '所有输出都落在这台电脑上，随时可以翻回去看。',
         actions: `
-          <button class="btn" data-act="export">${icon('download', 15)}导出</button>
+          <button class="btn" data-act="download" title="下载当前日志文件">${icon('download', 15)}下载</button>
+          <button class="btn" data-act="clearfile" title="清空当前日志的内容，保留文件">${icon('trash', 15)}清空</button>
+          <button class="btn" data-act="deletefile" title="删除当前日志文件">${icon('x', 15)}删除</button>
           <button class="btn" data-act="copy">${icon('copy', 15)}复制全部</button>`,
       })}
 
@@ -133,7 +135,7 @@ export function mount(root, ctx) {
       notify.error(res.err || '读取日志列表失败');
       return;
     }
-    state.files = res.files || [];
+    state.files = res.items || [];
     const keep = state.path;
     pick.innerHTML = state.files.length
       ? state.files.map((f) => {
@@ -242,16 +244,42 @@ export function mount(root, ctx) {
       if (!rows.length) return notify.warn('没有可复制的内容');
       await copyText(rows.map((r) => r[0]).join('\r\n'));
       notify.ok(`已复制 ${rows.length} 行`);
-    } else if (btn.dataset.act === 'export') {
-      const rows = visible();
-      if (!rows.length) return notify.warn('没有可导出的内容');
-      const blob = new Blob([rows.map((r) => r[0]).join('\r\n')], { type: 'text/plain;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = (state.path.split(/[\\/]/).pop() || 'log.txt').replace(/\.\w+$/, '') + '.txt';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 3000);
-      notify.ok('已导出');
+    } else if (btn.dataset.act === 'download') {
+      if (!state.path) return notify.warn('先选一个日志文件');
+      window.open(`/files?kind=log&path=${encodeURIComponent(state.path)}`, '_blank');
+      notify.info('已开始下载；窗口版里若没反应，点「打开目录」从磁盘拿');
+    } else if (btn.dataset.act === 'clearfile') {
+      if (!state.path) return notify.warn('先选一个日志文件');
+      const ok = await confirmDialog({
+        title: '清空这个日志？',
+        desc: '只清掉内容，文件本身保留 —— 服务还在写这个文件，删了它只会写进虚空。',
+        confirm: '清空',
+        danger: true,
+      });
+      if (!ok) return;
+      const res = await api.logClear(state.path);
+      if (!res.ok) return notify.error(res.err || '清空失败');
+      notify.ok(`已清空，腾出 ${bytes(res.freed || 0)}`);
+      await tail(true);
+    } else if (btn.dataset.act === 'deletefile') {
+      if (!state.path) return notify.warn('先选一个日志文件');
+      const ok = await confirmDialog({
+        title: '删除这个日志文件？',
+        desc: '文件会从磁盘上删掉，删之前先停止正在写它的服务更稳妥。',
+        confirm: '删除',
+        danger: true,
+      });
+      if (!ok) return;
+      api.logUnfollow();
+      const res = await api.logDelete(state.path);
+      if (!res.ok) return notify.error(res.err || '删除失败');
+      state.path = '';
+      state.lines = [];
+      state.levels = [];
+      pathEl.textContent = '未选择';
+      await loadFiles();
+      paint();
+      notify.ok('已删除');
     }
   });
 

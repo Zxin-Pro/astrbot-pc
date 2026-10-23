@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
-from . import config, download, envcheck, paths, probe
+from . import config, download, envcheck, instances, paths, probe
 from .events import bus
 
 STAGES: list[dict[str, str]] = [
@@ -222,6 +222,24 @@ class DeployRunner:
             self.state["message"] = "正在取消…"
         return {"ok": True}
 
+    def reset(self) -> dict[str, Any]:
+        """把向导状态清回未开始——部署标记卡住时用，不删已装好的文件。"""
+        if self.thread and self.thread.is_alive():
+            return {"ok": False, "err": "部署正在跑，先取消再重置"}
+        self.cancel_flag.clear()
+        with self.lock:
+            self.state.update({
+                "running": False, "finished": False, "ok": False, "dryRun": True,
+                "current": "", "message": "已重置部署状态", "startedAt": 0, "finishedAt": 0,
+                "progress": _empty_progress(),
+            })
+            self.state["steps"] = [
+                {"key": s["key"], "name": s["name"], "desc": s["desc"],
+                 "status": "pending", "detail": "", "ms": 0} for s in STAGES
+            ]
+        bus.emit("deploy", self.status())
+        return {"ok": True, "state": self.status()}
+
     def _run(self, dry_run: bool) -> None:
         handlers: list[tuple[str, Callable[[bool], tuple[bool, str]]]] = [
             ("env", self._stage_env),
@@ -253,6 +271,15 @@ class DeployRunner:
             self._set(key, "done" if ok else "failed", detail, ms)
             if not ok:
                 all_ok = False
+                if not self.cancel_flag.is_set():
+                    try:
+                        from . import crash
+
+                        stage_name = next((s["name"] for s in STAGES if s["key"] == key), key)
+                        crash.record("deploy", f"部署卡在「{stage_name}」",
+                                     detail=f"{key}: {detail[:1500]}", key=key)
+                    except Exception:
+                        pass
                 break
 
         with self.lock:
@@ -486,7 +513,8 @@ class DeployRunner:
         return proc.wait(), "\n".join(tail)
 
     def _stage_config(self, dry_run: bool) -> tuple[bool, str]:
-        inst = (config.get("instances") or [{}])[0]
+        # 用「当前实例」而不是第一个：实例页切了号，接线要跟着走
+        inst = instances.active()
         ws_port = int(inst.get("port") or paths.DEFAULT_PORTS["onebot"])
         napcat_port = int(inst.get("napcatPort") or paths.DEFAULT_PORTS["napcat"])
         webui_port = int(inst.get("astrbotPort") or paths.DEFAULT_PORTS["astrbot"])
@@ -596,6 +624,26 @@ class DeployRunner:
         if r.returncode != 0 or not py.exists():
             return None
         return py
+
+
+def write_wiring(inst: dict[str, Any], dry_run: bool = False) -> tuple[bool, str]:
+    """把指定实例的端口与令牌写进 NapCat / AstrBot 配置。
+
+    实例页「设为当前并应用」走这里；部署向导的 config 步骤也走同一段逻辑，
+    免得两边写法不一致——以前实例页改端口不生效，就是因为没人写服务配置。
+    """
+    iid = str(inst.get("id") or "")
+    if iid and str(config.get("app.activeInstance") or "") != iid:
+        config.save({"app": {"activeInstance": iid}})
+    try:
+        return runner()._stage_config(dry_run)
+    except Exception as e:
+        return False, f"写配置失败：{type(e).__name__}: {e}"
+
+
+def reset() -> dict[str, Any]:
+    """重置部署状态（保留已装文件与配置）。"""
+    return runner().reset()
 
 
 def venv_python() -> Path | None:

@@ -1,11 +1,11 @@
-﻿# 一条命令出两种 exe + 发布用文件：
+# 一条命令出两种 exe + 发布用文件：
 #   powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 #
 # 产物：
 #   dist\AstrBotPC\AstrBotPC.exe                    目录版，双击即用（需带 _internal）
-#   dist\AstrBotPC-<版本>-win64.zip                 目录版的压缩包（约 18 MB，部署时联网）
+#   dist\AstrBotPC-<版本>-win64.zip                 目录版的压缩包（约 23 MB，部署时联网）
 #   dist\AstrBotPC-<版本>-win64-single.exe          单文件版，拷一个文件就能跑
-#   dist\AstrBotPC-<版本>-win64-offline.zip         带 resources\ 的离线版（约 275 MB，部署全程不联网）
+#   dist\AstrBotPC-<版本>-win64-offline.zip         带 resources\ 的离线版（约 280 MB，部署全程不联网）
 #
 # 离线版只在 resources\ 存在时才出。先跑 python tools\build_offline.py 把资源收齐。
 #
@@ -13,7 +13,7 @@
 # 中文脚本会按 ANSI 解码，引号会被吃掉，报 "string is missing the terminator"。
 
 param(
-  [string]$Version = '1.4.0'
+  [string]$Version = '1.5.0'
 )
 
 $ErrorActionPreference = 'Stop'

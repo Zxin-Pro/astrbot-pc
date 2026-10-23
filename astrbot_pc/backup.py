@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import threading
 import time
 import zipfile
 from pathlib import Path
@@ -18,6 +19,11 @@ from . import config, paths
 
 MANIFEST = "backup-manifest.json"
 SKIP_DIRS = {"__pycache__", "node_modules", ".git", "venv", ".venv", "site-packages"}
+
+# 备份可能是几百 MB，跑在请求线程里界面只能干等。改成后台任务，界面轮询进度。
+_lock = threading.Lock()
+_cancel = threading.Event()
+_job: dict[str, Any] = {"running": False, "cancel": False, "startedAt": 0, "note": "", "name": "", "result": None}
 
 
 def _targets() -> list[tuple[Path, str]]:
@@ -42,7 +48,7 @@ def _safe_arc(base: Path, p: Path) -> str:
         return p.name
 
 
-def create(note: str = "") -> dict[str, Any]:
+def create(note: str = "", cancel: threading.Event | None = None) -> dict[str, Any]:
     paths.ensure_dirs()
     ts = time.strftime("%Y%m%d-%H%M%S", time.localtime())
     name = f"astrbot-pc-{ts}.zip"
@@ -64,6 +70,8 @@ def create(note: str = "") -> dict[str, Any]:
                     manifest["files"].append(arc)
                 else:
                     for p in src.rglob("*"):
+                        if cancel is not None and cancel.is_set():
+                            raise RuntimeError("已取消")
                         if p.is_dir():
                             continue
                         if any(part in SKIP_DIRS for part in p.parts):
@@ -85,6 +93,8 @@ def create(note: str = "") -> dict[str, Any]:
             dest.unlink()
         except OSError:
             pass
+        if str(e) == "已取消":
+            return {"ok": False, "err": "备份已取消"}
         return {"ok": False, "err": f"打包失败：{e}"}
 
     size = dest.stat().st_size
@@ -213,7 +223,129 @@ def open_folder() -> dict[str, Any]:
         return {"ok": False, "err": str(e)}
 
 
+def job() -> dict[str, Any]:
+    with _lock:
+        return dict(_job)
+
+
+def create_async(note: str = "") -> dict[str, Any]:
+    """后台打包。立即返回，界面靠 GET /api/backups 里的 job 看进度。"""
+    name = f"astrbot-pc-{time.strftime('%Y%m%d-%H%M%S', time.localtime())}.zip"
+    with _lock:
+        if _job.get("running"):
+            return {"ok": False, "err": "已经有一个备份在打包"}
+        _job.update({"running": True, "cancel": False, "startedAt": int(time.time()),
+                     "note": note, "name": name, "result": None})
+    _cancel.clear()
+
+    def _work() -> None:
+        try:
+            res = create(note, cancel=_cancel)
+        except Exception as e:  # create 自己会兜，这里再保一层
+            res = {"ok": False, "err": f"打包失败：{type(e).__name__}: {e}"}
+        finally:
+            _cancel.clear()
+        with _lock:
+            _job.update({"running": False, "cancel": False, "result": res})
+        try:
+            from .events import bus
+
+            bus.emit("notice", {
+                "level": "success" if res.get("ok") else "error",
+                "text": "备份完成：" + (res.get("name") or "") if res.get("ok") else str(res.get("err") or "备份失败"),
+            })
+        except Exception:
+            pass
+
+    threading.Thread(target=_work, name="backup", daemon=True).start()
+    return {"ok": True, "name": name, "startedAt": _job["startedAt"]}
+
+
+def cancel() -> dict[str, Any]:
+    with _lock:
+        running = bool(_job.get("running"))
+        _job["cancel"] = True
+    if not running:
+        return {"ok": False, "err": "没有正在进行的备份"}
+    _cancel.set()
+    return {"ok": True, "message": "正在取消，最多等当前文件写完"}
+
+
+def import_file(src: str) -> dict[str, Any]:
+    """把一个外来备份 zip 收进备份目录（之后可在列表里恢复）。
+
+    只接受本机路径：PC 端是桌面程序，文件选择器给的就是绝对路径，
+    没必要把几百 MB 塞进 JSON。
+    """
+    path = Path(str(src or "")).expanduser()
+    if not path.is_file():
+        return {"ok": False, "err": "找不到这个文件"}
+    if path.suffix.lower() != ".zip":
+        return {"ok": False, "err": "只支持 .zip 备份文件"}
+    if path.stat().st_size > 4 * 1024 * 1024 * 1024:
+        return {"ok": False, "err": "文件超过 4 GB，不像是本程序的备份"}
+    if not zipfile.is_zipfile(path):
+        return {"ok": False, "err": "这个文件不是有效的 zip"}
+    note = "外部导入"
+    try:
+        with zipfile.ZipFile(path) as zf:
+            if MANIFEST in zf.namelist():
+                data = json.loads(zf.read(MANIFEST).decode("utf-8-sig", "replace"))
+                note = str(data.get("note") or note)
+    except Exception:
+        pass
+    paths.ensure_dirs()
+    name = path.name
+    dest = paths.BACKUP_DIR / name
+    n = 1
+    while dest.exists():
+        dest = paths.BACKUP_DIR / f"{path.stem}-{n}{path.suffix}"
+        n += 1
+    try:
+        shutil.copy2(path, dest)
+    except OSError as e:
+        return {"ok": False, "err": f"复制失败：{e}"}
+    rec = {"name": dest.name, "path": str(dest), "size": dest.stat().st_size,
+           "createdAt": int(dest.stat().st_mtime), "note": note, "files": 0}
+    hist = [h for h in (config.get("backup.history", []) or []) if h.get("name") != dest.name]
+    hist.insert(0, rec)
+    config.save({"backup": {"history": hist[:20]}})
+    return {"ok": True, **rec}
+
+
+def maybe_auto_daily() -> dict[str, Any]:
+    """每天自动备份一次（开关在设置页）。调用方可以随便高频调，这里自己限速。"""
+    if not config.get("backup.autoDaily", False):
+        return {"ok": False, "skipped": True, "err": "未开启每日备份"}
+    today = time.strftime("%Y-%m-%d", time.localtime())
+    if str(config.get("backup.lastAuto") or "") == today:
+        return {"ok": False, "skipped": True, "err": "今天已经备过"}
+    if job().get("running"):
+        return {"ok": False, "skipped": True, "err": "已有备份在跑"}
+    res = create_async("每日自动备份")
+    if res.get("ok"):
+        # 先记日期，失败不记——失败的话下一个整点还能再试
+        config.save({"backup": {"lastAuto": today}})
+    return res
+
+
 def usage() -> dict[str, Any]:
     rows = list_all()
     total = sum(int(r.get("size", 0)) for r in rows)
-    return {"count": len(rows), "bytes": total, "items": rows[:20]}
+    data: dict[str, Any] = {"count": len(rows), "bytes": total, "items": rows[:20],
+                            "job": job()}
+    try:
+        from . import storage
+
+        snap = storage.scan()
+        data.update({
+            "total": snap.get("total", 0),
+            "disk": snap.get("disk", {}),
+            "stack": next((i["bytes"] for i in snap["items"] if i["key"] in ("astrbot", "napcat")), 0),
+            "logs": next((i["bytes"] for i in snap["items"] if i["key"] == "logs"), 0),
+            "backups": next((i["bytes"] for i in snap["items"] if i["key"] == "backups"), 0),
+            "sections": snap.get("items", []),
+        })
+    except Exception:
+        pass
+    return data

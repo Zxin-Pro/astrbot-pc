@@ -19,7 +19,13 @@ DEFAULTS: dict[str, Any] = {
         "autoStart": False,       # 开机自启
         "minimizeToTray": True,
         "checkUpdate": True,
-        "glass": True,            # 液态玻璃材质；老显卡可以关掉，界面回到实色
+        "glass": True,            # 兼容老配置：等价于 glassLevel != "off"
+        "glassLevel": "soft",     # off | soft | strong —— 玻璃厚度
+        "compact": False,         # 精简模式：隐藏次要说明，一屏看更多
+        "background": {"enabled": False, "file": ""},  # 自定义背景图（文件存在 state/ 下）
+        "analytics": False,       # 匿名统计（默认关；开了也不上报任何账号信息）
+        "analyticsId": "",
+        "stopOnExit": True,       # 关窗时是否停掉 NapCat / AstrBot
         "lastTab": "dashboard",
     },
     "server": {
@@ -66,7 +72,13 @@ DEFAULTS: dict[str, Any] = {
         "model": "",
         "personaId": "",
     },
-    "backup": {"keep": 10, "scope": "all"},
+    "backup": {
+        "keep": 10,
+        "scope": "all",
+        "autoDaily": False,   # 每天第一次打开界面时自动备份一次
+        "lastAuto": "",       # 上次自动备份的日期 YYYY-MM-DD
+    },
+    "terminal": {"cwd": "", "timeout": 60},
     "logs": {"maxLines": 2000, "compact": True, "autoScroll": True},
     "update": {"repo": "Zxin-Pro/astrbot-pc", "channel": "stable"},
 }

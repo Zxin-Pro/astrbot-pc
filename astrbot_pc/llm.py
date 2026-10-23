@@ -424,3 +424,96 @@ def list_models(api_key: str = "", api_base: str = "") -> dict[str, Any]:
             models.append(it)
     models.sort()
     return {"ok": True, "models": models, "count": len(models), "apiBase": base}
+
+
+def _post_json(url: str, payload: dict[str, Any], key: str, timeout: float = 30.0) -> tuple[int, Any]:
+    data = json.dumps(payload).encode("utf-8")
+    headers = {
+        "User-Agent": "AstrBotPC",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", "replace")
+        try:
+            return e.code, json.loads(raw)
+        except Exception:
+            return e.code, raw[:300]
+
+
+def test_connection() -> dict[str, Any]:
+    """拿已保存的模型配置真发一次请求。
+
+    「密钥填了、地址填了」不等于能聊——401、模型名写错、余额不足都是保存时
+    看不出来的。这里发一个 max_tokens=1 的短请求，把真实结果摆出来。
+    """
+    if not installed():
+        return {"ok": False, "err": "还没部署 AstrBot"}
+    try:
+        conf = _read_cmd()
+    except Exception as e:
+        return {"ok": False, "err": f"读不到 AstrBot 配置：{e}"}
+
+    sources = conf.get("provider_sources") or []
+    providers = conf.get("provider") or []
+    if not isinstance(providers, list) or not providers:
+        return {"ok": False, "err": "还没有配置模型，先把上面的表单填好保存"}
+    target = str(((conf.get("agent_runner") or {}).get("config") or {}).get("model", {}).get("provider_id") or "")
+    prov = next((p for p in providers if isinstance(p, dict) and p.get("id") == target), None)
+    if prov is None:
+        prov = next((p for p in providers if isinstance(p, dict)), None) or {}
+    src = next((s for s in sources if isinstance(s, dict) and s.get("id") == prov.get("provider_source_id")), {})
+    base = str(src.get("api_base") or src.get("apiBase") or "").strip()
+    model = str(prov.get("model") or "").strip()
+    key = ""
+    raw_key = src.get("key")
+    if isinstance(raw_key, list) and raw_key:
+        key = str(raw_key[0] or "")
+    elif isinstance(raw_key, str):
+        key = raw_key
+    if not base or not model:
+        return {"ok": False, "err": "模型配置不完整（缺 API 地址或模型名）"}
+    base = base.rstrip("/")
+    if not base.endswith("/v1"):
+        base += "/v1"
+
+    started = time.time()
+    try:
+        status, payload = _post_json(
+            base + "/chat/completions",
+            {"model": model, "messages": [{"role": "user", "content": "ping"}],
+             "max_tokens": 1, "stream": False},
+            key,
+            timeout=30,
+        )
+    except Exception as e:
+        return {"ok": False, "err": f"连不上模型接口：{type(e).__name__}: {e}", "model": model, "apiBase": base}
+    latency = int((time.time() - started) * 1000)
+
+    if status == 200 and isinstance(payload, dict):
+        reply = ""
+        try:
+            reply = str(payload["choices"][0]["message"].get("content") or "")
+        except Exception:
+            reply = ""
+        usage = payload.get("usage") or {}
+        return {"ok": True, "model": model, "apiBase": base, "latencyMs": latency,
+                "reply": reply[:60], "usage": usage}
+    msg = ""
+    if isinstance(payload, dict):
+        err = payload.get("error")
+        if isinstance(err, dict):
+            msg = str(err.get("message") or err.get("type") or "")
+        elif err:
+            msg = str(err)
+        msg = msg or str(payload.get("message") or "")
+    if status == 401:
+        return {"ok": False, "err": "密钥不对（接口返回 401）", "model": model, "apiBase": base, "latencyMs": latency}
+    return {"ok": False, "err": f"接口返回 HTTP {status} {msg}".strip(), "model": model,
+            "apiBase": base, "latencyMs": latency}

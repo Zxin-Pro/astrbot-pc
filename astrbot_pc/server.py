@@ -22,7 +22,7 @@ from . import api, config, paths, stats
 from .events import bus
 from .services import manager
 
-MAX_BODY = 4 * 1024 * 1024
+MAX_BODY = 12 * 1024 * 1024  # 背景图走 dataURL，8 MB 原图 base64 后约 11 MB
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -101,6 +101,9 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/events", "/api/events"):
             return self._sse(query)
 
+        if path == "/files":
+            return self._file(query)
+
         if path.startswith("/api/"):
             body = self._read_body() if method in ("POST", "PATCH", "PUT", "DELETE") else {}
             try:
@@ -138,6 +141,71 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             stop.set()
             bus.unsubscribe(sid)
+
+    # ---------- 文件下载 ----------
+
+    def _file(self, query: dict[str, list[str]]) -> None:
+        """给浏览器吐原始字节：备份/日志/诊断包/背景图。
+
+        单独一条路由是因为 /api/* 全是 JSON；备份动辄几百 MB，
+        必须流式写出去，不能先读进内存再 json 包一层。
+        """
+        kind = (query.get("kind") or [""])[0]
+        name = (query.get("name") or [""])[0] or (query.get("path") or [""])[0]
+        target: Path | None = None
+        ctype = "application/octet-stream"
+        if kind == "backup":
+            cand = (paths.BACKUP_DIR / Path(name).name)
+            target = cand if cand.is_file() else None
+            ctype = "application/zip"
+        elif kind == "diagnostic":
+            cand = (paths.DIAG_DIR / Path(name).name)
+            target = cand if cand.is_file() else None
+            ctype = "application/zip"
+        elif kind == "log":
+            from . import logs as logs_mod
+
+            target = logs_mod.allowed(name)
+            if target is not None:
+                ctype = "text/plain; charset=utf-8"
+        elif kind == "background":
+            from . import appearance
+
+            try:
+                target = appearance.background_path()
+            except Exception:
+                target = None
+            if target is not None:
+                ctype = mimetypes.guess_type(str(target))[0] or "image/png"
+        if target is None or not target.is_file():
+            return self._json(404, {"ok": False, "err": "文件不存在"})
+
+        try:
+            size = target.stat().st_size
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(size))
+            self.send_header("Cache-Control", "no-store" if kind != "background" else "max-age=60")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            if kind in ("backup", "diagnostic", "log"):
+                self.send_header("Content-Disposition",
+                                 f'attachment; filename="{target.name}"')
+            self.end_headers()
+            if self.command == "HEAD":
+                return
+            with open(target, "rb") as fh:
+                while True:
+                    chunk = fh.read(256 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except OSError as e:
+            try:
+                self._json(500, {"ok": False, "err": str(e)})
+            except Exception:
+                pass
 
     # ---------- 静态文件 ----------
 
@@ -188,6 +256,7 @@ class Server:
                 self.httpd.daemon_threads = True
                 self.port = self.httpd.server_address[1]
                 api.set_server_port(self.port)
+                api.set_server_host(self.host)
                 return self.port
             except OSError as e:
                 last_err = e

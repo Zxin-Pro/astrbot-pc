@@ -152,6 +152,30 @@ function longestUptime() {
 
 /* ---------------------------------------------------------------- 刷新 */
 
+function applyAppearance() {
+  const app = (store.config && store.config.app) || {};
+  const root = document.documentElement;
+  root.dataset.compact = app.compact ? '1' : '0';
+  const level = app.glassLevel || (app.glass === false ? 'off' : 'soft');
+  root.dataset.glassLevel = level;
+
+  const bd = document.querySelector('.backdrop');
+  if (!bd) return;
+  const bg = app.background || {};
+  if (bg.enabled && bg.file) {
+    // 图放 .backdrop 上，遮罩交给 .has-bg::after（按主题给足对比度，见 glass.css）
+    bd.classList.add('has-bg');
+    bd.style.backgroundImage = 'url("/files?kind=background&t=' + encodeURIComponent(bg.file) + '")';
+    bd.style.backgroundSize = 'cover';
+    bd.style.backgroundPosition = 'center';
+  } else {
+    bd.classList.remove('has-bg');
+    bd.style.backgroundImage = '';
+    bd.style.backgroundSize = '';
+    bd.style.backgroundPosition = '';
+  }
+}
+
 function makeCtx(router) {
   return {
     store,
@@ -174,6 +198,7 @@ function makeCtx(router) {
       if (res.ok && patchObj.app) {
         const t = res.config?.app?.theme;
         if (t && !localStorage.getItem(THEME_KEY)) applyTheme(t);
+        applyAppearance();
       }
       return res;
     },
@@ -297,6 +322,7 @@ async function main() {
   await bootstrap();
 
   syncGlass(store.config?.app?.glass);
+  applyAppearance();
 
   if (!store.ready) {
     notify.error(store.error || '读取启动数据失败');
@@ -413,7 +439,7 @@ async function main() {
     }
     if (meta && /^[1-9]$/.test(e.key)) {
       e.preventDefault();
-      const r = ROUTES[Number(e.key) - 1];
+      const r = ROUTES.find((x) => x.shortcut === Number(e.key));
       if (r) router.go(r.key);
       return;
     }

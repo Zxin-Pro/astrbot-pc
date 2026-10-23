@@ -1,11 +1,11 @@
 /** 设置：所有开关都在这里，改完立刻生效，不用重启。 */
 
 import { api } from '../api.js';
-import { confirmDialog, notify, updateNotesModal } from '../components.js';
+import { confirmDialog, modal, notify, updateNotesModal } from '../components.js';
 import { icon } from '../icons.js';
 import { applyGlass } from '../glass.js';
 import { getSetting } from '../store.js';
-import { esc } from '../util.js';
+import { bytes, copyText, esc } from '../util.js';
 import { pageHead } from './common.js';
 
 const THEMES = [
@@ -100,10 +100,27 @@ export function mount(root, ctx) {
             control: sw('app.followSystem', get('app.followSystem', true)),
           })}
           ${row({
-            title: '液态玻璃材质',
-            desc: '半透明磨砂面板，面板后面那层彩色背景会透上来。关掉就是实色，老显卡更顺',
-            control: sw('app.glass', get('app.glass', true)),
+            title: '玻璃质感',
+            desc: '半透明磨砂面板的厚度。关掉就是实色，老显卡更顺',
+            control: `<select class="select select--sm" data-sel="app.glassLevel">
+              <option value="off" ${get('app.glassLevel', 'soft') === 'off' ? 'selected' : ''}>关闭</option>
+              <option value="soft" ${get('app.glassLevel', 'soft') === 'soft' ? 'selected' : ''}>轻薄</option>
+              <option value="strong" ${get('app.glassLevel', 'soft') === 'strong' ? 'selected' : ''}>厚重</option>
+            </select>`,
           })}
+          ${row({ title: '精简模式', desc: '少画装饰、去掉背景光晕，远程桌面和低配机器更跟手', control: sw('app.compact', get('app.compact', false)) })}
+          <div class="set-row set-row--full">
+            <div class="set-row__text">
+              <strong>背景图</strong>
+              <small>PNG / JPG / WebP，最大 8 MB。会铺满窗口，配合玻璃质感更好看</small>
+            </div>
+            <div class="set-row__ctrl inline">
+              <img id="bg-thumb" alt="" class="bg-thumb" hidden>
+              <input type="file" id="bg-file" accept="image/png,image/jpeg,image/webp" hidden>
+              <button class="btn btn--sm" data-act="bg-upload">${icon('file', 14)}选择图片</button>
+              <button class="btn btn--sm btn--ghost" data-act="bg-clear">${icon('x', 14)}清除</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -136,6 +153,11 @@ export function mount(root, ctx) {
             </select>`,
           })}
         </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><h2>局域网访问</h2></div>
+        <div class="card" id="lan-card"><p class="hint">读取中…</p></div>
       </div>
 
       <div class="section">
@@ -195,12 +217,48 @@ export function mount(root, ctx) {
           </div>
           <div class="set-row set-row--full">
             <div class="set-row__text">
+              <strong>存储占用</strong>
+              <small id="storage-summary">读取中…</small>
+            </div>
+            <div class="set-row__ctrl inline">
+              <button class="btn btn--sm btn--ghost" data-act="clean-tmp">临时文件</button>
+              <button class="btn btn--sm btn--ghost" data-act="clean-diag">诊断包</button>
+              <button class="btn btn--sm btn--ghost" data-act="clean-cache">缓存</button>
+            </div>
+          </div>
+          <div class="set-row set-row--full">
+            <div class="set-row__text">
               <strong>恢复默认</strong>
               <small>所有设置回到初始状态。不会删数据、不会删备份。</small>
             </div>
             <div class="set-row__ctrl">
               <button class="btn btn--sm btn--danger" data-act="reset">重置设置</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><h2>隐私</h2></div>
+        <div class="card">
+          ${row({
+            title: '匿名使用统计',
+            desc: '只上报版本号、页面打开次数和是否部署成功，不含 QQ 号、密钥和聊天内容。默认关闭',
+            control: sw('app.analytics', get('app.analytics', false)),
+          })}
+          <div class="set-row set-row--full">
+            <div class="set-row__text">
+              <strong>匿名标识</strong>
+              <small class="mono" id="analytics-id">—</small>
+            </div>
+            <div class="set-row__ctrl">
+              <button class="btn btn--sm btn--ghost" data-act="analytics-reset">重置标识</button>
+            </div>
+          </div>
+          <div class="row-actions">
+            <button class="btn btn--sm btn--ghost" data-act="policy-privacy">${icon('shieldCheck', 14)}隐私政策</button>
+            <button class="btn btn--sm btn--ghost" data-act="policy-terms">${icon('file', 14)}用户协议</button>
+            <button class="btn btn--sm btn--ghost" data-act="policy-disclaimer">${icon('alert', 14)}免责声明</button>
           </div>
         </div>
       </div>
@@ -237,6 +295,141 @@ export function mount(root, ctx) {
   syncTheme();
   document.addEventListener('themechange', syncTheme);
 
+  let lan = null;
+  let storage = null;
+
+  function renderLan() {
+    const el = root.querySelector('#lan-card');
+    if (!el) return;
+    if (!lan) {
+      el.innerHTML = '<p class="hint">读取中…</p>';
+      return;
+    }
+    if (!lan.ok) {
+      el.innerHTML = `<p class="hint">${esc(lan.err || '读不到网络信息')}</p>`;
+      return;
+    }
+    el.innerHTML = `
+      <div class="set-row set-row--full">
+        <div class="set-row__text">
+          <strong>本机地址</strong>
+          <small class="mono">${esc(lan.localUrl || '—')}</small>
+        </div>
+        <div class="set-row__ctrl">
+          <button class="btn btn--sm" data-act="copy-local">${icon('copy', 14)}复制</button>
+        </div>
+      </div>
+      <div class="set-row set-row--full">
+        <div class="set-row__text">
+          <strong>同一 Wi-Fi 下的手机 / 平板</strong>
+          <small>${lan.mode === 'lan'
+            ? `${lan.needRestart ? '改完要重启界面才对外监听。' : ''}用这个地址就能打开：<span class="mono">${esc(lan.lanUrl || '—')}</span>`
+            : '现在只允许本机访问。把上面「界面访问范围」改成「允许局域网」，重启界面后就能用。'}</small>
+        </div>
+        <div class="set-row__ctrl">
+          ${lan.mode === 'lan' && !lan.needRestart
+            ? '<button class="btn btn--sm" data-act="copy-lan">' + icon('copy', 14) + '复制</button>'
+            : '<button class="btn btn--sm btn--ghost" data-act="go-server">去改</button>'}
+        </div>
+      </div>
+      ${lan.note ? `<p class="field__help" style="margin:10px 0 0">${esc(lan.note)}</p>` : ''}`;
+  }
+
+  async function loadLan() {
+    const res = await api.lan();
+    lan = res;
+    renderLan();
+  }
+
+  function renderStorage() {
+    const el = root.querySelector('#storage-summary');
+    if (!el) return;
+    if (!storage) {
+      el.textContent = '读取中…';
+      return;
+    }
+    if (!storage.ok) {
+      el.textContent = storage.err || '读不到存储占用';
+      return;
+    }
+    const big = (storage.sections || []).filter((s) => s.bytes > 0).slice(0, 3)
+      .map((s) => `${s.label} ${bytes(s.bytes)}`).join(' · ');
+    el.textContent = `${bytes(storage.total || 0)}${big ? '（' + big + '）' : ''}${storage.disk ? ` · 磁盘余 ${bytes(storage.disk.free)}` : ''}`;
+  }
+
+  async function loadStorage(force) {
+    const res = await api.storage(force);
+    storage = res;
+    renderStorage();
+  }
+
+  function applyCompact(on) {
+    document.documentElement.dataset.compact = on ? '1' : '0';
+  }
+
+  function renderAnalytics() {
+    const el = root.querySelector('#analytics-id');
+    if (el) el.textContent = get('app.analyticsId', '') || '还没生成，打开统计时自动生成';
+  }
+
+  function paintBackdrop(file) {
+    const bd = document.querySelector('.backdrop');
+    if (!bd) return;
+    if (file) {
+      // 与 main.js 的 applyAppearance 同一套：图放 .backdrop，遮罩由 .has-bg::after 负责
+      bd.classList.add('has-bg');
+      bd.style.backgroundImage = 'url("/files?kind=background&t=' + encodeURIComponent(file) + '")';
+      bd.style.backgroundSize = 'cover';
+      bd.style.backgroundPosition = 'center';
+    } else {
+      bd.classList.remove('has-bg');
+      bd.style.backgroundImage = '';
+      bd.style.backgroundSize = '';
+      bd.style.backgroundPosition = '';
+    }
+  }
+
+  function renderBg() {
+    const b = get('app.background', {}) || {};
+    const thumb = root.querySelector('#bg-thumb');
+    if (!thumb) return;
+    if (b.enabled && b.file) {
+      thumb.src = '/files?kind=background&t=' + encodeURIComponent(b.file);
+      thumb.hidden = false;
+    } else {
+      thumb.removeAttribute('src');
+      thumb.hidden = true;
+    }
+  }
+
+  function policyModal(kind) {
+    const map = {
+      privacy: {
+        title: '隐私政策',
+        body: `<p>烛之控制台在你自己的电脑上运行，数据默认不出本机。</p>
+          <p>· 不上传聊天记录、QQ 号、模型密钥；配置与人格只写在本地数据目录。<br>
+          · 「匿名使用统计」默认关闭。打开后只发送随机标识、版本号、页面名与是否部署成功，不含任何账号或内容。<br>
+          · 检查更新会向 GitHub 请求公开的 Release 列表，这是唯一的外网请求（拉模型与下载包除外，由你主动触发）。<br>
+          · 想清掉统计标识，点下面的「重置标识」。</p>`,
+      },
+      terms: {
+        title: '用户协议',
+        body: `<p>这是一个免费的开源工具，按「现状」提供。</p>
+          <p>· 你需要自己准备 QQ 账号与模型 API，并遵守它们各自的服务条款。<br>
+          · 不要用它做骚扰、刷屏、诈骗或其他违法的事；后果由使用者承担。<br>
+          · 软件可能出错，重要配置请用「备份」页导出留底。</p>`,
+      },
+      disclaimer: {
+        title: '免责声明',
+        body: `<p>NapCat、AstrBot 与本项目各自独立。因使用本工具导致的账号风控、封禁、数据丢失或服务中断，作者不承担赔偿责任。</p>
+          <p>遇到风控请降低发送频率、不要群发，并先停下用官方客户端确认账号状态。</p>`,
+      },
+    };
+    const p = map[kind];
+    if (!p) return;
+    modal({ title: p.title, body: p.body, actions: [{ label: '知道了', primary: true }] });
+  }
+
   async function save(patch, okText) {
     const res = await ctx.saveSetting(patch);
     if (res.ok) {
@@ -269,6 +462,7 @@ export function mount(root, ctx) {
       });
       // 玻璃开关要当场生效，不能等写完配置再刷新
       if (el.dataset.key === 'app.glass') applyGlass(el.checked);
+      if (el.dataset.key === 'app.compact') applyCompact(el.checked);
       await save(patch);
     } else if (el.matches('select[data-sel]')) {
       const path = el.dataset.sel.split('.');
@@ -278,7 +472,16 @@ export function mount(root, ctx) {
         if (i === path.length - 1) cur[k] = el.value;
         else cur = cur[k] = {};
       });
+      if (el.dataset.sel === 'app.glassLevel') {
+        // 三档一次写两个键：glass 布尔给旧逻辑，glassLevel 给新样式厚度
+        const on = el.value !== 'off';
+        await save({ app: { glassLevel: el.value, glass: on } });
+        applyGlass(on);
+        document.documentElement.dataset.glassLevel = el.value;
+        return;
+      }
       await save(patch, el.dataset.sel === 'server.authMode' ? '已保存，重启界面后生效' : '已保存');
+      if (el.dataset.sel === 'server.authMode') loadLan();
     } else if (el.matches('input[data-num]')) {
       const path = el.dataset.num.split('.');
       const val = Number(el.value);
@@ -337,6 +540,43 @@ export function mount(root, ctx) {
     } else if (act === 'update-notes') {
       const u = ctx.store.update;
       if (u) showNotes(u);
+    } else if (act === 'bg-upload') {
+      root.querySelector('#bg-file')?.click();
+    } else if (act === 'bg-clear') {
+      const res = await api.clearBackground();
+      if (!res.ok) return notify.error(res.err || '清除失败');
+      notify.ok('背景图已清除');
+      if (ctx.store?.config?.app) ctx.store.config.app.background = { enabled: false, file: '' };
+      paintBackdrop('');
+      renderBg();
+    } else if (act === 'copy-local') {
+      await copyText(lan?.localUrl || '');
+      notify.ok('本机地址已复制');
+    } else if (act === 'copy-lan') {
+      await copyText(lan?.lanUrl || '');
+      notify.ok('局域网地址已复制');
+    } else if (act === 'go-server') {
+      root.querySelector('[data-sel="server.authMode"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (act === 'clean-tmp' || act === 'clean-diag' || act === 'clean-cache') {
+      const what = act === 'clean-tmp' ? 'tmp' : act === 'clean-diag' ? 'diag' : 'cache';
+      const label = act === 'clean-tmp' ? '临时文件' : act === 'clean-diag' ? '诊断包' : '缓存';
+      const ok = await confirmDialog({ title: `清理${label}？`, desc: '只删可以重新生成的东西，配置、数据与备份不受影响。', confirm: '清理' });
+      if (!ok) return;
+      btn.disabled = true;
+      const res = await api.storageClean(what);
+      btn.disabled = false;
+      if (!res.ok) return notify.error(res.err || '清理失败');
+      storage = res.storage || storage;
+      renderStorage();
+      notify.ok(`已清理，腾出 ${bytes(res.freed || 0)}`);
+    } else if (act === 'analytics-reset') {
+      const ok = await confirmDialog({ title: '重置匿名标识？', desc: '下次打开统计会换一个新标识，服务端无法再把新旧数据关联。', confirm: '重置' });
+      if (!ok) return;
+      const id = 'a-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      const res = await save({ app: { analyticsId: id } }, '已换新标识');
+      if (res.ok) renderAnalytics();
+    } else if (act === 'policy-privacy' || act === 'policy-terms' || act === 'policy-disclaimer') {
+      policyModal(act.replace('policy-', ''));
     } else if (act === 'open-repo') {
       window.open('https://github.com/Zxin-Pro/astrbot-candle', '_blank');
     } else if (act === 'open-site') {
@@ -353,6 +593,32 @@ export function mount(root, ctx) {
       notify.info('已打开日志目录，可以手动清理，避免误删正在写的文件');
     }
   });
+
+  root.querySelector('#bg-file').addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) return notify.error('图片不能超过 8 MB');
+    const dataUrl = await new Promise((resolve) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result || ''));
+      fr.onerror = () => resolve('');
+      fr.readAsDataURL(file);
+    });
+    if (!dataUrl) return notify.error('读不出这张图');
+    const res = await api.setBackground(dataUrl);
+    if (!res.ok) return notify.error(res.err || '保存失败');
+    notify.ok('背景图已保存');
+    if (ctx.store?.config?.app) ctx.store.config.app.background = { enabled: !!res.enabled, file: res.file || '' };
+    paintBackdrop(res.enabled ? res.file : '');
+    renderBg();
+  });
+
+  renderBg();
+  renderAnalytics();
+  applyCompact(get('app.compact', false));
+  loadLan();
+  loadStorage(false);
 
   return {
     update() {

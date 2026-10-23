@@ -1,15 +1,16 @@
 /** 路由：页面懒加载，切换时保留滚动位置。 */
 
 export const ROUTES = [
-  { key: 'dashboard', title: '概览', icon: 'dashboard', group: 'primary', load: () => import('./pages/dashboard.js') },
-  { key: 'deploy', title: '部署', icon: 'rocket', group: 'primary', load: () => import('./pages/deploy.js') },
-  { key: 'model', title: '模型', icon: 'cpu', group: 'primary', load: () => import('./pages/model.js') },
-  { key: 'services', title: '服务', icon: 'server', group: 'primary', load: () => import('./pages/services.js') },
-  { key: 'logs', title: '日志', icon: 'terminal', group: 'primary', load: () => import('./pages/logs.js') },
-  { key: 'login', title: '登录', icon: 'qrcode', group: 'primary', load: () => import('./pages/login.js') },
-  { key: 'instances', title: '实例', icon: 'layers', group: 'secondary', load: () => import('./pages/instances.js') },
-  { key: 'backups', title: '备份', icon: 'archive', group: 'secondary', load: () => import('./pages/backups.js') },
-  { key: 'settings', title: '设置', icon: 'settings', group: 'secondary', load: () => import('./pages/settings.js') },
+  { key: 'dashboard', title: '概览', icon: 'dashboard', group: 'primary', shortcut: 1, load: () => import('./pages/dashboard.js') },
+  { key: 'deploy', title: '部署', icon: 'rocket', group: 'primary', shortcut: 2, load: () => import('./pages/deploy.js') },
+  { key: 'model', title: '模型', icon: 'cpu', group: 'primary', shortcut: 3, load: () => import('./pages/model.js') },
+  { key: 'services', title: '服务', icon: 'server', group: 'primary', shortcut: 4, load: () => import('./pages/services.js') },
+  { key: 'logs', title: '日志', icon: 'terminal', group: 'primary', shortcut: 5, load: () => import('./pages/logs.js') },
+  { key: 'login', title: '登录', icon: 'qrcode', group: 'primary', shortcut: 6, load: () => import('./pages/login.js') },
+  { key: 'diag', title: '排障', icon: 'activity', group: 'secondary', load: () => import('./pages/diag.js') },
+  { key: 'instances', title: '实例', icon: 'layers', group: 'secondary', shortcut: 7, load: () => import('./pages/instances.js') },
+  { key: 'backups', title: '备份', icon: 'archive', group: 'secondary', shortcut: 8, load: () => import('./pages/backups.js') },
+  { key: 'settings', title: '设置', icon: 'settings', group: 'secondary', shortcut: 9, load: () => import('./pages/settings.js') },
 ];
 
 export const ROUTE_MAP = new Map(ROUTES.map((r) => [r.key, r]));

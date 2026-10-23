@@ -184,4 +184,19 @@ AstrBot v4 收到扁平的 provider 项会当场迁移成 `provider_sources`（�
 **重建 exe 之前，先确认打包机的 pythonnet 是完整的。**
 pythonnet 3.x 靠 `clr_loader` + `cffi` 去找 `Python.Runtime.dll`；这两个包缺了，PyInstaller 一声不响，打出来的 exe 也能启动、能起 HTTP 服务，但一开窗口就抛 `webview.errors.WebViewException: You must have pythonnet installed in order to use pywebview`——冒烟只跑 `--headless` 是照不出来的，必须真的开一次窗口。判据两条：`python -c "import clr, webview"` 能过；`dist\AstrBotPC\_internal` 里能看到 `clr_loader` 与 `_cffi_backend*.pyd`。顺带：PyInstaller 自己还依赖 `altgraph`、`pefile`（连带 `ordlookup`）、`packaging`，少一个连 `--version` 都跑不起来。
 
+**后台任务的返回值，别去读子线程的局部变量。**
+备份改成后台打包后，`create_async()` 在返回的 dict 里写了 `name`，而 `name` 是在子线程 `_work()` 里算的——子线程已经启动、备份会照常完成，但主线程返回时抛 `NameError`，接口 500，界面说失败。修法是把名字在拿锁之前就算好、写进 `_job`，`_work()` 只读外层闭包。判断标准：任何会被另一个线程读到的值，都必须在启动线程之前绑定好。
+
+**前端的 request 封装已经包过一层参数，调用处别再包。**
+`api.js` 的 `setBackground: (dataUrl) => request(..., { dataUrl })` 已经负责组装 body；设置页又写成 `api.setBackground({ dataUrl })`，服务端收到 `{"dataUrl":{"dataUrl":"data:image/png;..."}}`，报「只支持 PNG / JPEG / WebP / GIF」。凡是「helper 签名是值、不是对象」的地方，调用处传对象就是双重包装。排查时在页面里拦一次 fetch 看 body 最快。
+
+**用户自选的背景图必须再加一层可读性遮罩。**
+背景图由用户提供，可能是一张亮到发白的人像或花纹，直接把正文压上去必然掉到 4.5:1 以下。做法是给 `.backdrop` 加 `has-bg` 类，再用 `::after` 铺一层半透明白（浅色 .66/.44、深色 .6/.76）；背景图本身只放在 `background-image` 里，不要和渐变混在 JS 字符串里，否则调透明度时两边互相打架。换图、清图都要同时改 class 与 style，不能只改一处。
+
+**导航快捷键按 route.shortcut 匹配，不要按数组下标。**
+模型页插到「部署」和「服务」之间后，`Ctrl+8` 落到了备份页、设置页再也按不到——因为代码写的是 `ROUTES[Number(e.key)-1]`。现在每个路由显式带 `shortcut`，`Ctrl+数字` 按这个字段找；新增页面插在中间不会挪动别人。排障页没有快捷键，按侧栏进。
+
+**设置保存成功不等于界面已经用上新值。**
+`saveSetting()` 只写后端并把结果返回，`ctx.store.config` 不会自动刷新。背景图、玻璃三档、精简模式这类「立即看得见」的项，保存后必须在本地同步应用（`paintBackdrop` / `applyGlass` / `applyCompact`）并更新 store，否则用户会以为没生效，再点一次。
+
 **打包脚本别再指望 PATH 里那个 python。** `tools/build_exe.ps1` 现在先 `Get-Command python`，找不到再退到 `%LOCALAPPDATA%\Programs\Python\Python3xx\python.exe`；这台机器上 `python` 在 PATH 里也能被 `Get-Command` 找到之前，脚本一直报「无法将 python 项识别为 cmdlet」。另有一个更迷惑的坑：从别的程序里起 PowerShell 去调 exe 时，子进程环境里必须有 `PATHEXT`，否则 `& 'C:\...\python.exe'` 会被 PowerShell 当成「文档」去激活，报 `无法在管道中激活文档`，看起来像是 python 不存在。

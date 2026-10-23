@@ -18,6 +18,17 @@ export function mount(root, ctx) {
     </div>`;
 
   const list = root.querySelector('#inst-list');
+  let conflicts = [];
+
+  async function loadConflicts() {
+    const res = await api.conflicts();
+    conflicts = res.items || [];
+    render();
+  }
+
+  function conflictOf(it) {
+    return conflicts.filter((c) => c.id === it.id || c.instance === it.id || c.name === it.name);
+  }
 
   function render() {
     const rows = ctx.store.instances || [];
@@ -46,14 +57,17 @@ export function mount(root, ctx) {
     const svc = ctx.store.services || {};
     const running = svc.napcat?.status === 'running' || svc.astrbot?.status === 'running';
     const online = Boolean(it.onebotOpen);
+    const bad = conflictOf(it);
     return `
       <div class="card is-interactive instance" data-id="${esc(it.id)}">
+        ${bad.length ? `<div class="notice notice--warn"><div class="notice__body"><strong>端口被占用</strong><p class="muted">${bad.map((c) => esc(c.detail || c.message || `${c.port} 已被 ${c.owner || '其他程序'} 占用`)).join('；')}</p></div></div>` : ''}
         <div class="card-head">
           <div class="svc__head">
             <div class="instance__avatar">${esc((it.name || 'Q').slice(0, 1))}</div>
             <div class="svc__title">
               <h3>${esc(it.name || '未命名')}
-                ${it.enabled === false ? '<span class="pill">已停用</span>' : running ? '<span class="pill pill--ok">在用</span>' : '<span class="pill">待机</span>'}
+                ${it.active ? '<span class="pill pill--brand">当前</span>' : ''}
+                ${it.enabled === false ? '<span class="pill">已停用</span>' : running && it.active ? '<span class="pill pill--ok">在用</span>' : '<span class="pill">待机</span>'}
               </h3>
               <p class="mono">${esc(it.qq || '未绑定 QQ')}</p>
             </div>
@@ -71,6 +85,8 @@ export function mount(root, ctx) {
         </dl>
         <div class="instance__foot">
           <button class="btn btn--sm btn--ghost" data-act="copy-token" data-id="${esc(it.id)}">${icon('copy', 13)}复制令牌</button>
+          <button class="btn btn--sm btn--ghost" data-act="apply" data-id="${esc(it.id)}" title="把这个实例的端口与端口令牌写进 AstrBot / NapCat 配置">${icon('route', 13)}一键接线</button>
+          ${it.active ? '' : `<button class="btn btn--sm" data-act="active" data-id="${esc(it.id)}">设为当前</button>`}
           <span class="grow"></span>
           <span class="muted" style="font-size:11.5px">${esc(it.id)}</span>
         </div>
@@ -98,6 +114,10 @@ export function mount(root, ctx) {
           <span class="field__label">NapCat WebUI 端口</span>
           <input class="input mono" name="napcatPort" type="number" min="1024" max="65535" value="${v.napcatPort || 6099}" />
         </label>
+        <div class="row-actions field--full">
+          <button class="btn btn--sm" type="button" data-act="auto-port">${icon('bolt', 14)}自动挑空闲端口</button>
+          <span class="field__help" data-port-note>保存后再点一次「一键接线」，新端口才会写进 AstrBot / NapCat。</span>
+        </div>
         <label class="field">
           <span class="field__label">访问令牌</span>
           <input class="input mono" name="token" value="${esc(v.token || '')}" placeholder="留空则不校验" />
@@ -142,13 +162,21 @@ export function mount(root, ctx) {
               notify.error(res.err || '保存失败');
               return false;
             }
-            notify.ok(editing ? '已保存' : '实例已创建');
+            notify.ok(editing ? '已保存；端口有改动就点一下「一键接线」' : '实例已创建');
             await ctx.refreshInstances();
+            await loadConflicts();
             render();
             close();
           },
         },
       ],
+    });
+    m.root.querySelector('[data-act="auto-port"]')?.addEventListener('click', async () => {
+      const res = await api.instanceSuggest();
+      if (!res.ok) return notify.error(res.err || '找空闲端口失败');
+      m.root.querySelector('[name="port"]').value = res.port;
+      m.root.querySelector('[name="napcatPort"]').value = res.napcatPort;
+      notify.ok(`挑到 ${res.port} / ${res.napcatPort}`);
     });
     const first = m.root.querySelector('input[name="name"]');
     if (first) setTimeout(() => first.focus(), 60);
@@ -174,6 +202,7 @@ export function mount(root, ctx) {
   }
 
   render();
+  loadConflicts();
 
   root.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-act]');
@@ -203,6 +232,20 @@ export function mount(root, ctx) {
     } else if (act === 'copy-token' && it) {
       await copyText(it.token || '');
       notify.ok(it.token ? '令牌已复制' : '这个实例没有设置令牌');
+    } else if (act === 'active' && it) {
+      const res = await api.instanceActive(it.id);
+      if (!res.ok) return notify.error(res.err || '切换失败');
+      notify.ok(`已切到「${it.name}」`);
+      await ctx.refreshInstances();
+      render();
+    } else if (act === 'apply' && it) {
+      btn.disabled = true;
+      const res = await api.instanceApply(it.id);
+      btn.disabled = false;
+      if (!res.ok) return notify.error(res.err || '接线失败');
+      notify.ok(res.needsRestart ? '接线已写入，重启服务后生效' : '接线已写入');
+      await ctx.refreshInstances();
+      render();
     }
   });
 

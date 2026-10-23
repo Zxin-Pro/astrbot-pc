@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""液态玻璃观感检查：九页 x 深浅两套 x 玻璃开关，截图 + 控制台错误。"""
+"""液态玻璃观感检查：十页 x 深浅两套 x 玻璃开关，截图 + 控制台错误。"""
 from __future__ import annotations
 
 import sys
@@ -9,7 +9,7 @@ from playwright.sync_api import sync_playwright
 
 BASE = "http://127.0.0.1:17650"
 OUT = Path(__file__).resolve().parent.parent / ".devdata" / "shots-glass"
-PAGES = ["dashboard", "deploy", "model", "services", "logs", "login", "instances", "backups", "settings"]
+PAGES = ["dashboard", "deploy", "model", "services", "logs", "login", "diag", "instances", "backups", "settings"]
 
 
 def run() -> int:

@@ -166,6 +166,7 @@ export function mount(root, ctx) {
               <strong>AstrBot 只在启动时读一次配置</strong>
               <small>模型和人格都是这样。保存完点右边重启一下，新配置才用得上。</small>
             </span>
+            <button class="btn btn--sm" data-act="test">${icon('activity', 15)} 测连通</button>
             <button class="btn btn--sm btn--primary" data-act="restart">${icon('refresh', 15)} 重启 AstrBot</button>
           </div>
         </div>
@@ -280,6 +281,24 @@ export function mount(root, ctx) {
     notify.ok(`拉到 ${res.count} 个模型`);
   }
 
+  async function onTest() {
+    const btn = root.querySelector('[data-act="test"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.busy = '1';
+    }
+    const res = await api.llmTest();
+    if (btn) {
+      btn.disabled = false;
+      delete btn.dataset.busy;
+    }
+    if (!res.ok) {
+      notify.info(res.err || '连不上');
+      return;
+    }
+    notify.ok(`通了：${res.model} · ${res.latencyMs} ms`);
+  }
+
   async function onRestart() {
     const res = await api.service('astrbot', 'restart');
     if (!res.ok) {
@@ -303,6 +322,7 @@ export function mount(root, ctx) {
       return;
     }
     if (act === 'reload') return loadAll();
+    if (act === 'test') return onTest();
     if (act === 'relay-check') return checkRelay();
     if (act === 'relay-register') {
       const res = await api.openUrl((state && state.relay && state.relay.register) || 'https://worldcodes.online/register?invite_code=CZLT');

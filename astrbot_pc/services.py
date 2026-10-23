@@ -195,6 +195,12 @@ class ServiceManager:
             except Exception as e:
                 st.status = "crashed"
                 st.message = f"启动失败：{e}"
+                try:
+                    from . import crash
+
+                    crash.record("service", f"{st.name} 启动失败", detail=str(e), key=key)
+                except Exception:
+                    pass
                 self._emit()
                 return {"ok": False, "err": st.message}
 
@@ -296,6 +302,7 @@ class ServiceManager:
                 elif not running and st.status in ("running", "starting"):
                     st.status = "crashed"
                     st.message = "进程已退出"
+                    _note_crash(key, st)
                 items[key] = {
                     "key": key,
                     "name": st.name,
@@ -356,6 +363,13 @@ class ServiceManager:
                             "level": "error",
                             "text": f"{st.name} 连续崩溃，已熔断自动重启",
                         })
+                        try:
+                            from . import crash
+
+                            crash.record("service", f"{st.name} 连续崩溃，已停止自动重启",
+                                         detail=f"10 分钟内失败 {len(st.fails)} 次", key=key)
+                        except Exception:
+                            pass
                         changed = True
                     continue
                 delay = RESTART_BACKOFF[min(len(st.fails), len(RESTART_BACKOFF) - 1)]
@@ -382,6 +396,26 @@ class ServiceManager:
                 self.onepass()
             except Exception:
                 continue
+
+
+def _note_crash(key: str, st: ServiceState) -> None:
+    """服务掉了记一笔，附上日志尾巴——只有「进程已退出」四个字等于没说。"""
+    try:
+        from . import crash, logs
+
+        detail = f"端口 {st.port}，PID {st.pid}"
+        if st.started_at:
+            detail += time.strftime("，启动于 %Y-%m-%d %H:%M:%S", time.localtime(st.started_at))
+        try:
+            res = logs.tail(str(st.log or (paths.LOG_DIR / f"{key}.log")), 40, compact=True)
+            tail = "\n".join(res.get("lines") or [])[-1800:]
+            if tail:
+                detail += "\n\n最后几行：\n" + tail
+        except Exception:
+            pass
+        crash.record("service", f"{st.name} 意外退出", detail=detail, key=key)
+    except Exception:
+        pass
 
 
 def _split(cmd: str) -> list[str]:

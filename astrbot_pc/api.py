@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs
 
-from . import backup, config, deploy, envcheck, instances, llm, logs, paths, probe, startup, stats, update
+from . import (appearance, backup, config, console, creds, crash, deploy, doctor, envcheck,
+               instances, llm, logs, paths, probe, startup, stats, storage, update)
 from .events import bus
 from .services import manager
 
@@ -280,7 +281,39 @@ def backup_list(**_: Any) -> dict[str, Any]:
 
 @route("POST", r"/api/backups")
 def backup_create(body: dict[str, Any], **_: Any) -> dict[str, Any]:
-    return backup.create(note=str(body.get("note") or ""))
+    # 大目录打包要几十秒到几分钟，放后台跑，界面轮询 job 状态
+    return backup.create_async(note=str(body.get("note") or ""))
+
+
+@route("POST", r"/api/backups/cancel")
+def backup_cancel(**_: Any) -> dict[str, Any]:
+    return backup.cancel()
+
+
+@route("POST", r"/api/backups/import")
+def backup_import(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    path = str(body.get("path") or "").strip()
+    if path:
+        return backup.import_file(path)
+    data_url = str(body.get("dataUrl") or "")
+    if data_url.startswith("data:") and ";base64," in data_url:
+        import base64 as _b64
+
+        raw = data_url.split(";base64,", 1)[1]
+        try:
+            payload = _b64.b64decode(raw)
+        except Exception:
+            return {"ok": False, "err": "备份内容不是有效的 base64"}
+        paths.ensure_dirs()
+        tmp = paths.TMP_DIR / f"import-{int(time.time())}.zip"
+        tmp.write_bytes(payload)
+        res = backup.import_file(str(tmp))
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return res
+    return {"ok": False, "err": "缺少文件路径（桌面窗口里用「选择文件」，网页模式请填绝对路径）"}
 
 
 @route("POST", r"/api/backups/open")
@@ -406,11 +439,15 @@ def update_cached(**_: Any) -> dict[str, Any]:
     return {"ok": True, "update": update.cached()}
 
 
-_server_port = {"port": 0}
+_server_port = {"port": 0, "host": "127.0.0.1"}
 
 
 def set_server_port(port: int) -> None:
     _server_port["port"] = port
+
+
+def set_server_host(host: str) -> None:
+    _server_port["host"] = host or "127.0.0.1"
 
 
 #: 运行形态：桌面窗口 / 浏览器。由 app.py 在起窗口前置位。
@@ -431,3 +468,192 @@ def events_poll(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
     seq = int((query.get("seq") or ["0"])[0] or 0)
     items = bus.since(seq)
     return {"ok": True, "items": items, "seq": bus.last_seq()}
+
+
+# ---------------- 体检 / 诊断包 / 部署重置 ----------------
+
+@route("GET", r"/api/doctor")
+def doctor_get(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    force = (query.get("force") or ["0"])[0] == "1"
+    return doctor.run(force=force)
+
+
+@route("POST", r"/api/diag/export")
+def diag_export(**_: Any) -> dict[str, Any]:
+    return doctor.export_bundle()
+
+
+@route("GET", r"/api/diag")
+def diag_list(**_: Any) -> dict[str, Any]:
+    items = []
+    if paths.DIAG_DIR.is_dir():
+        for p in sorted(paths.DIAG_DIR.glob("*.zip"), key=lambda x: -x.stat().st_mtime):
+            st = p.stat()
+            items.append({"name": p.name, "size": st.st_size, "createdAt": int(st.st_mtime)})
+    return {"ok": True, "dir": str(paths.DIAG_DIR), "items": items}
+
+
+@route("DELETE", r"/api/diag/(?P<name>[^/]+)")
+def diag_delete(name: str, **_: Any) -> dict[str, Any]:
+    p = paths.DIAG_DIR / Path(name).name
+    if not p.is_file():
+        return {"ok": False, "err": "诊断包不存在"}
+    try:
+        p.unlink()
+        return {"ok": True}
+    except OSError as e:
+        return {"ok": False, "err": f"删除失败：{e}"}
+
+
+@route("POST", r"/api/deploy/reset")
+def deploy_reset(**_: Any) -> dict[str, Any]:
+    return doctor.reset_state()
+
+
+# ---------------- 命令行 ----------------
+
+@route("POST", r"/api/terminal/run")
+def terminal_run(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    cmd = str(body.get("cmd") or "").strip()
+    if not cmd:
+        return {"ok": False, "err": "命令是空的"}
+    return console.run(cmd, str(body.get("cwd") or ""), int(body.get("timeout") or 60))
+
+
+# ---------------- 存储 ----------------
+
+@route("GET", r"/api/storage")
+def storage_get(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    force = (query.get("force") or ["0"])[0] == "1"
+    return storage.scan(force=force)
+
+
+@route("POST", r"/api/storage/clean")
+def storage_clean(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return storage.clean(str(body.get("what") or "quick"))
+
+
+# ---------------- 崩溃记录 ----------------
+
+@route("GET", r"/api/crashes")
+def crashes_get(**_: Any) -> dict[str, Any]:
+    return crash.list_all()
+
+
+@route("DELETE", r"/api/crashes")
+def crashes_clear(**_: Any) -> dict[str, Any]:
+    return crash.clear()
+
+
+# ---------------- 日志清理 ----------------
+
+@route("POST", r"/api/logs/clear")
+def logs_clear(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return logs.clear(str(body.get("path") or ""))
+
+
+@route("DELETE", r"/api/logs")
+def logs_delete(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    path = (query.get("path") or [""])[0]
+    return logs.delete(path)
+
+
+# ---------------- 实例接线 ----------------
+
+@route("POST", r"/api/instances/(?P<iid>[A-Za-z0-9_-]+)/apply")
+def inst_apply(iid: str, **_: Any) -> dict[str, Any]:
+    return instances.apply(iid)
+
+
+@route("POST", r"/api/instances/(?P<iid>[A-Za-z0-9_-]+)/active")
+def inst_active(iid: str, **_: Any) -> dict[str, Any]:
+    return instances.set_active(iid)
+
+
+@route("POST", r"/api/instances/suggest")
+def inst_suggest(**_: Any) -> dict[str, Any]:
+    return instances.suggest_ports()
+
+
+@route("GET", r"/api/instances/conflicts")
+def inst_conflicts(**_: Any) -> dict[str, Any]:
+    return {"ok": True, "items": instances.conflicts()}
+
+
+# ---------------- 控制台账号 ----------------
+
+@route("GET", r"/api/console/creds")
+def console_creds(**_: Any) -> dict[str, Any]:
+    return creds.info()
+
+
+@route("POST", r"/api/console/creds")
+def console_creds_reset(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return creds.reset(str(body.get("username") or ""), str(body.get("password") or ""))
+
+
+# ---------------- 模型连通性 ----------------
+
+@route("POST", r"/api/llm/test")
+def llm_test(**_: Any) -> dict[str, Any]:
+    return llm.test_connection()
+
+
+# ---------------- 外观 ----------------
+
+@route("GET", r"/api/appearance")
+def appearance_get(**_: Any) -> dict[str, Any]:
+    return appearance.info()
+
+
+@route("POST", r"/api/appearance/background")
+def appearance_bg(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return appearance.set_bg(str(body.get("dataUrl") or ""))
+
+
+@route("DELETE", r"/api/appearance/background")
+def appearance_bg_clear(**_: Any) -> dict[str, Any]:
+    return appearance.clear_bg()
+
+
+@route("POST", r"/api/appearance/level")
+def appearance_level(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return appearance.set_level(str(body.get("level") or "soft"))
+
+
+# ---------------- 局域网 ----------------
+
+def _lan_ip() -> str:
+    import socket
+
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            return str(s.getsockname()[0])
+        finally:
+            s.close()
+    except Exception:
+        try:
+            return str(socket.gethostbyname(socket.gethostname()))
+        except Exception:
+            return ""
+
+
+@route("GET", r"/api/lan")
+def lan_info(**_: Any) -> dict[str, Any]:
+    mode = str(config.get("server.authMode", "local") or "local")
+    port = int(_server_port.get("port") or 0)
+    host = str(_server_port.get("host") or "127.0.0.1")
+    ip = _lan_ip()
+    return {
+        "ok": True,
+        "mode": mode,
+        "host": host,
+        "ip": ip,
+        "port": port,
+        "localUrl": f"http://127.0.0.1:{port}",
+        "lanUrl": f"http://{ip}:{port}" if ip and mode == "lan" and host not in ("127.0.0.1", "localhost") else "",
+        "needRestart": mode == "lan" and host in ("127.0.0.1", "localhost"),
+        "note": "手机与电脑连同一个 Wi-Fi，就能用手机浏览器打开这个地址" if mode == "lan" else "只有本机能访问；在设置里打开「允许局域网访问」后重启程序即可",
+    }
