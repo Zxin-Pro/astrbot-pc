@@ -69,6 +69,13 @@ def _migrate() -> None:
         patch.setdefault("server", {})["authMode"] = "local"
     if patch:
         config.save(patch)
+    # 给老实例补 astrbotPort / napcatSecret，并建好实例目录
+    try:
+        from . import instances
+
+        instances.ensure_defaults()
+    except Exception:
+        pass
 
 
 def _bind_host() -> str:

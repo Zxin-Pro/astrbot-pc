@@ -1,7 +1,7 @@
 /** 模型与人格：给 AstrBot 配好中转站与人格，用户只贴一个密钥。 */
 
 import { api } from '../api.js';
-import { notify } from '../components.js';
+import { confirmDialog, modal, notify } from '../components.js';
 import { icon } from '../icons.js';
 import { getSetting } from '../store.js';
 import { esc } from '../util.js';
@@ -36,6 +36,9 @@ export function mount(root, ctx) {
 
   let state = null;
   let relay = null;
+  let routes = null;
+  let health = null;
+  let chatLog = [];
   let busy = {};
 
   root.innerHTML = `
@@ -121,6 +124,45 @@ export function mount(root, ctx) {
       </div>`;
   }
 
+  function routeCard() {
+    const rs = routes || {};
+    const items = rs.items || [];
+    const hs = health || {};
+    const hmap = new Map((hs.items || []).map((h) => [h.id, h]));
+    const rows = items.map((it) => {
+      const h = hmap.get(it.id);
+      const status = h ? (h.ok ? pill(h.latencyMs + ' ms', 'pill--ok', true) : pill('连不上', 'pill--bad')) : (it.primary ? pill('主线路', 'pill--brand') : pill('备用', ''));
+      return `<tr>
+        <td><strong>${esc(it.name || it.id)}</strong>${it.primary ? ' <span class="pill pill--brand">主</span>' : ''}</td>
+        <td class="mono">${esc(it.apiBase)}</td>
+        <td class="mono">${esc(it.model || '—')}</td>
+        <td class="mono">${esc(it.maskedKey || '—')}</td>
+        <td>${status}</td>
+        <td class="row-actions">
+          <button class="btn btn--sm btn--ghost" data-route-edit="${esc(it.id)}">编辑</button>
+          <button class="btn btn--sm btn--ghost" data-route-del="${esc(it.id)}">删除</button>
+        </td>
+      </tr>`;
+    }).join('');
+    return `
+      <div class="section">
+        <div class="section-head">
+          <h2>线路</h2>
+          ${hs.degraded ? pill('有线路不通', 'pill--warn') : hs.healthy ? pill('都通', 'pill--ok', true) : pill('未检测', '')}
+          <span class="grow"></span>
+          <button class="btn btn--sm btn--ghost" data-act="route-health">${icon('activity', 15)} 测速</button>
+          <button class="btn btn--sm btn--ghost" data-act="route-add">${icon('plus', 15)} 添加线路</button>
+        </div>
+        <div class="card">
+          ${items.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>名称</th><th>API 地址</th><th>模型</th><th>密钥</th><th>状态</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+            : '<p class="hint">还没有线路。填一条就能用；再加一条就自动变成主备切换。</p>'}
+          <p class="hint" style="margin:12px 0 0">
+            按顺序从上往下用：主线路失败（401 / 429 / 超时）时 AstrBot 会自动换下一条。${rs.legacy ? '现在是旧的单线路配置，加第二条会切到多线路。' : ''}
+          </p>
+        </div>
+      </div>`;
+  }
+
   function personaCard() {
     const cur = (state && state.persona) || {};
     const personaId = cur.custom ? cur.id : (get('llm.personaId', '') || PRESETS[0].id);
@@ -151,6 +193,32 @@ export function mount(root, ctx) {
             <button class="btn btn--primary" data-act="save-persona">${icon('check', 16)} 保存人格</button>
             <span class="hint">保存后自动设为 AstrBot 的默认人格</span>
           </div>
+        </div>
+      </div>`;
+  }
+
+  function chatCard() {
+    const rows = (chatLog || []).map((m) => `
+      <div class="chat-msg chat-msg--${m.role}">
+        <span class="chat-msg__who">${m.role === 'user' ? '你' : '模型'}</span>
+        <div class="chat-msg__text">${esc(m.text)}</div>
+        ${m.meta ? `<small class="muted">${esc(m.meta)}</small>` : ''}
+      </div>`).join('');
+    return `
+      <div class="section" id="chat-card">
+        <div class="section-head">
+          <h2>试聊</h2>
+          <span class="hint">按当前人格走完整链路，不经过 QQ</span>
+          <span class="grow"></span>
+          ${chatLog.length ? '<button class="btn btn--sm btn--ghost" data-act="chat-clear">清空</button>' : ''}
+        </div>
+        <div class="card">
+          <div class="chat-log" id="chat-log">${rows || '<p class="hint">发一句试试。会带你保存的人格、当前主线路，回复也走真实接口。</p>'}</div>
+          <div class="field-inline" style="margin-top:12px">
+            <input class="input grow" id="f-chat" placeholder="说点什么…" autocomplete="off">
+            <button class="btn btn--primary" data-act="chat-send">${icon('message', 16)} 发送</button>
+          </div>
+          <span class="field__help">回复慢或报错，多半是线路或密钥的问题；保存模型后不用重启也能试。</span>
         </div>
       </div>`;
   }
@@ -194,7 +262,7 @@ export function mount(root, ctx) {
     }
     // 中转站卡片单独放一格：它要异步检测，回来时只重画这一格。
     // 一开始整页重画，用户正在输的密钥会被冲掉（检测最长要等十几秒）。
-    body.innerHTML = '<div id="relay-slot"></div>' + modelCard() + personaCard() + applyCard();
+    body.innerHTML = '<div id="relay-slot"></div>' + modelCard() + routeCard() + '<div id="chat-slot">' + chatCard() + '</div>' + personaCard() + applyCard();
     paintRelay();
   }
 
@@ -204,7 +272,9 @@ export function mount(root, ctx) {
   }
 
   async function loadAll() {
-    state = await api.llm();
+    const [s, r] = await Promise.all([api.llm(), api.llmRoutes().catch(() => null)]);
+    state = s;
+    routes = r;
     render();
     checkRelay();
   }
@@ -308,10 +378,140 @@ export function mount(root, ctx) {
     notify.ok('AstrBot 正在重启，稍等十几秒');
   }
 
+  function paintChat() {
+    const slot = root.querySelector('#chat-slot');
+    if (slot) slot.innerHTML = chatCard();
+    const log = root.querySelector('#chat-log');
+    if (log) log.scrollTop = log.scrollHeight;
+  }
+
+  function openRouteModal(existing) {
+    const it = existing || {};
+    const form = `
+      <div class="form-grid">
+        <label class="field">
+          <span class="field__label">名称</span>
+          <input class="input" id="r-name" value="${esc(it.name || '')}" placeholder="主线路 / 备用">
+        </label>
+        <label class="field">
+          <span class="field__label">权重</span>
+          <input class="input mono" id="r-priority" value="${esc(String(it.priority ?? ((routes?.items || []).length + 1) * 10))}" inputmode="numeric">
+          <span class="field__help">数字小的先用</span>
+        </label>
+        <label class="field field--full">
+          <span class="field__label">API 地址</span>
+          <input class="input mono" id="r-base" value="${esc(it.apiBase || '')}" placeholder="https://worldcodes.online/v1" spellcheck="false">
+        </label>
+        <label class="field field--full">
+          <span class="field__label">API 密钥</span>
+          <input class="input mono" id="r-key" type="password" value="" placeholder="${it.maskedKey ? '已保存 ' + esc(it.maskedKey) + '，留空不改' : 'sk-...'}" autocomplete="off">
+        </label>
+        <label class="field field--full">
+          <span class="field__label">模型名</span>
+          <input class="input mono" id="r-model" value="${esc(it.model || '')}" placeholder="gpt-4o-mini" spellcheck="false">
+        </label>
+      </div>`;
+    modal({
+      title: existing ? '编辑线路' : '添加线路',
+      desc: '保存后会写进 AstrBot 的 agent_runner，重启后按顺序做主备切换。',
+      body: form,
+      actions: [
+        { label: '取消' },
+        {
+          label: '保存',
+          primary: true,
+          run: async (close, rootEl) => {
+            const name = rootEl.querySelector('#r-name')?.value.trim() || '';
+            const apiBase = rootEl.querySelector('#r-base')?.value.trim() || '';
+            const apiKey = rootEl.querySelector('#r-key')?.value.trim() || '';
+            const model = rootEl.querySelector('#r-model')?.value.trim() || '';
+            const priority = Number(rootEl.querySelector('#r-priority')?.value || 0) || ((routes?.items || []).length + 1) * 10;
+            if (!apiBase || !model) {
+              notify.info('API 地址和模型名都要填');
+              return false;
+            }
+            const items = (routes?.items || []).map((x) => ({
+              id: x.id, name: x.name, apiBase: x.apiBase, model: x.model,
+              apiKey: '', enabled: x.enabled, priority: x.priority,
+            }));
+            const row = existing
+              ? items.find((x) => x.id === existing.id)
+              : null;
+            if (row) {
+              Object.assign(row, { name, apiBase, model, apiKey, priority });
+            } else {
+              items.push({ id: '', name, apiBase, apiKey, model, enabled: true, priority });
+            }
+            const res = await api.llmRoutesSave(items, true);
+            if (!res.ok) {
+              notify.info(res.err || '保存线路失败');
+              return false;
+            }
+            await loadAll();
+            if (res.apply && res.apply.ok === false) notify.warn(res.apply.err || '线路已存，写 AstrBot 失败');
+            else notify.ok('线路已保存，重启 AstrBot 生效');
+          },
+        },
+      ],
+    });
+  }
+
+  async function onRouteHealth() {
+    const btn = root.querySelector('[data-act="route-health"]');
+    if (btn) btn.disabled = true;
+    try {
+      health = await api.llmRoutesHealth(true);
+      render();
+      if (health.ok) notify.ok('线路都通');
+      else notify.warn(health.err || '有线路连不通');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function onChatSend() {
+    const input = root.querySelector('#f-chat');
+    const text = input?.value.trim() || '';
+    if (!text || busy.chat) return;
+    busy.chat = true;
+    chatLog.push({ role: 'user', text });
+    if (input) input.value = '';
+    paintChat();
+    const res = await api.selftestChat(text);
+    busy.chat = false;
+    if (!res.ok) {
+      chatLog.push({ role: 'model', text: res.err || '没发出去', meta: '失败' });
+      notify.info(res.err || '试聊失败');
+      paintChat();
+      return;
+    }
+    const usage = res.usage || {};
+    const meta = [res.model, res.latencyMs ? res.latencyMs + ' ms' : '', usage.total_tokens ? usage.total_tokens + ' tokens' : '', res.persona ? '人格 ' + res.persona : '']
+      .filter(Boolean).join(' · ');
+    chatLog.push({ role: 'model', text: res.reply || '', meta });
+    if (chatLog.length > 20) chatLog = chatLog.slice(-20);
+    paintChat();
+  }
+
   root.addEventListener('click', async (e) => {
-    const btn = e.target.closest('[data-act],[data-preset]');
+    const btn = e.target.closest('[data-act],[data-preset],[data-route-edit],[data-route-del]');
     if (!btn) return;
     const act = btn.dataset.act;
+    if (btn.dataset.routeEdit) {
+      const it = (routes?.items || []).find((x) => x.id === btn.dataset.routeEdit);
+      if (it) openRouteModal(it);
+      return;
+    }
+    if (btn.dataset.routeDel) {
+      const it = (routes?.items || []).find((x) => x.id === btn.dataset.routeDel);
+      if (!it) return;
+      const yes = await confirmDialog({ title: '删除线路', desc: '删掉「' + (it.name || it.id) + '」？至少得留一条。', confirm: '删除', danger: true });
+      if (!yes) return;
+      const res = await api.llmRouteDelete(it.id);
+      if (!res.ok) notify.info(res.err || '删除失败');
+      else { notify.ok('线路已删除'); await loadAll(); }
+      return;
+    }
     if (btn.dataset.preset) {
       const preset = PRESETS.find((p) => p.id === btn.dataset.preset);
       if (!preset) return;
@@ -322,6 +522,15 @@ export function mount(root, ctx) {
       return;
     }
     if (act === 'reload') return loadAll();
+    if (act === 'route-add') return openRouteModal(null);
+    if (act === 'route-health') return onRouteHealth();
+    if (act === 'chat-send') return onChatSend();
+    if (act === 'chat-clear') {
+      chatLog = [];
+      await api.selftestClear();
+      paintChat();
+      return;
+    }
     if (act === 'test') return onTest();
     if (act === 'relay-check') return checkRelay();
     if (act === 'relay-register') {

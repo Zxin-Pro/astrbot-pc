@@ -1,10 +1,9 @@
-"""服务管理：把 NapCat 与 AstrBot 当两个受管子进程来带。
+"""服务管理：每个实例一对 NapCat / AstrBot 受管子进程。
 
-设计要点（和手机版对齐）：
-- 每个服务一个 pid 文件、一个日志文件、一份最近状态；
-- 停止走进程树（``taskkill /T /F``），不留孤儿 Chromium；
-- 守护线程每 2 秒体检一次，掉线按退避策略自动拉起，连续失败会熔断；
-- 所有状态变化都往事件总线发一条，界面不用轮询也能实时变色。
+1.5.0 之前只有全局一对进程；现在状态表和进程表都按 (实例 id, 角色) 索引，
+每个实例有自己的 ASTRBOT_ROOT、NAPCAT_WORKDIR、端口和日志。共享的只有源码树、
+虚拟环境和 NapCat 安装包。对外仍保留 manager.start("astrbot") 这种写法，
+默认操作当前实例，避免旧调用全炸。
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import config, envcheck, paths, probe
+from . import config, envcheck, paths, probe, runtime
 from .events import bus
 
 MAX_LOG_BYTES = 20 * 1024 * 1024
@@ -27,6 +26,7 @@ KEEP_LOG_BYTES = 2 * 1024 * 1024
 RESTART_BACKOFF = [2, 5, 10, 30, 60]
 FAIL_WINDOW_SEC = 600
 FAIL_LIMIT = 5
+ROLES = ("napcat", "astrbot")
 
 
 def now() -> int:
@@ -41,20 +41,38 @@ def _creationflags() -> int:
     return flags
 
 
-def _child_env() -> dict[str, str]:
-    """子进程统一走 UTF-8。
-
-    输出被重定向到文件时，Windows 上的 Python 会退回 GBK，中文日志变乱码，
-    带 emoji 的日志行还会抛 UnicodeEncodeError 直接丢掉。
-    """
+def _child_env(iid: str = "", role: str = "") -> dict[str, str]:
+    """子进程统一走 UTF-8，并注入实例隔离变量。"""
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
+    if iid:
+        env["ASTRBOT_PC_INSTANCE"] = iid
+    if role == "astrbot" and iid:
+        root = runtime.astrbot_root(iid)
+        env["ASTRBOT_ROOT"] = str(root)
+        env["DASHBOARD_PORT"] = str(runtime.port(iid, "astrbot"))
+        env["ASTRBOT_DASHBOARD_PORT"] = str(runtime.port(iid, "astrbot"))
+        env["ASTRBOT_DASHBOARD_HOST"] = "127.0.0.1"
+    if role == "napcat" and iid:
+        inst = runtime.get(iid) or {}
+        ndir = runtime.napcat_workdir(iid)
+        env["NAPCAT_WORKDIR"] = str(ndir)
+        env["NAPCAT_WEBUI_PREFERRED_PORT"] = str(runtime.port(iid, "napcat"))
+        secret = str(inst.get("napcatSecret") or "")
+        if secret:
+            env["NAPCAT_WEBUI_SECRET_KEY"] = secret
+        base = _napcat_base()
+        if base:
+            env.setdefault("NAPCAT_MAIN_PATH", str(base / "napcat.mjs"))
+            env.setdefault("NAPCAT_INJECT_PATH", str(base / "NapCatWinBootHook.dll"))
+            env.setdefault("NAPCAT_LOAD_PATH", str(base / "loadNapCat.js"))
+            env.setdefault("NAPCAT_PATCH_PACKAGE", str(base / "qqnt.json"))
+            env.setdefault("NAPCAT_LAUNCHER_PATH", str(base / "NapCatWinBootMain.exe"))
     return env
 
 
 def rotate_log(p: Path) -> None:
-    """日志超过 20 MB 就截成末尾 2 MB，跟手机版同一条规则。"""
     try:
         if not p.exists() or p.stat().st_size <= MAX_LOG_BYTES:
             return
@@ -68,12 +86,13 @@ def rotate_log(p: Path) -> None:
 
 @dataclass
 class ServiceState:
+    iid: str
     key: str
     name: str
     port: int = 0
     pid: int = 0
     started_at: int = 0
-    status: str = "stopped"          # stopped | starting | running | crashed | blocked
+    status: str = "stopped"
     message: str = ""
     restarts: int = 0
     fails: list[float] = field(default_factory=list)
@@ -84,16 +103,31 @@ class ServiceState:
 class ServiceManager:
     def __init__(self) -> None:
         self.lock = threading.RLock()
-        self.states: dict[str, ServiceState] = {
-            "napcat": ServiceState("napcat", "NapCat"),
-            "astrbot": ServiceState("astrbot", "AstrBot"),
-        }
-        self._procs: dict[str, subprocess.Popen] = {}
+        self.states: dict[tuple[str, str], ServiceState] = {}
+        self._procs: dict[tuple[str, str], subprocess.Popen] = {}
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._last_emit = 0.0
 
-    # ---------- 生命周期 ----------
+    # ---------- 基础 ----------
+
+    def _iid(self, iid: str | None = None) -> str:
+        if iid:
+            hit = runtime.get(iid)
+            return str((hit or {}).get("id") or iid)
+        return runtime.active_id() or "bot1"
+
+    def _get(self, iid: str, key: str) -> ServiceState:
+        k = (iid, key)
+        if k not in self.states:
+            self.states[k] = ServiceState(iid, key, "NapCat" if key == "napcat" else "AstrBot")
+        return self.states[k]
+
+    def _role_enabled(self, iid: str, key: str) -> bool:
+        inst = runtime.get(iid) or {}
+        if inst and not bool(inst.get("enabled", True)):
+            return False
+        return bool(config.get(f"services.{key}.autoRestart", True))
 
     def start_monitor(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -107,8 +141,9 @@ class ServiceManager:
 
     # ---------- 命令解析 ----------
 
-    def resolve_command(self, key: str) -> tuple[list[str], str]:
-        """返回 (argv, cwd)。没装好就抛 RuntimeError，消息直接给界面看。"""
+    def resolve_command(self, key: str, iid: str | None = None) -> tuple[list[str], str]:
+        sid = self._iid(iid)
+        runtime.ensure(sid)
         cfg = config.get(f"services.{key}", {}) or {}
         custom = (cfg.get("command") or "").strip()
         python = sys.executable
@@ -116,73 +151,95 @@ class ServiceManager:
         if key == "astrbot":
             hit = envcheck._first_existing(envcheck.ASTRBOT_SEARCH)
             if custom:
-                return _split(custom), str(hit or paths.STACK_DIR)
+                base = runtime.astrbot_root(sid)
+                return _split(custom), str(base if base.exists() else (hit or paths.STACK_DIR))
             if not hit:
                 raise RuntimeError("AstrBot 还没装好，请先走一遍部署向导")
             root = Path(hit)
-            # 有虚拟环境就用它，依赖才装得全
             from .deploy import venv_python
 
             venv = venv_python()
             runner = str(venv) if venv else python
             for entry in ("main.py", "astrbot.py"):
                 if (root / entry).exists():
-                    return [runner, entry], str(root)
+                    return [runner, str(root / entry)], str(root)
             raise RuntimeError("AstrBot 目录里找不到 main.py，可能装坏了")
 
         if key == "napcat":
-            hit = envcheck._first_existing(envcheck.NAPCAT_SEARCH)
+            base = _napcat_base()
             if custom:
-                base = Path(hit) if hit else paths.STACK_DIR
-                return _split(custom), str(base.parent if base.is_file() else base)
-            if not hit:
+                cwd = runtime.napcat_workdir(sid)
+                return _split(custom), str(cwd if cwd.exists() else (base or paths.STACK_DIR))
+            if not base:
                 raise RuntimeError("NapCat 还没装好，请先走一遍部署向导")
-            root = Path(hit)
-            base = root.parent if root.is_file() else root
-            for name in ("launcher.bat", "napcat.bat", "start.bat"):
-                cand = base / name
-                if cand.exists():
-                    return ["cmd", "/c", str(cand)], str(base)
-            # NapCat.Shell.Windows.Node 包里自带 node，直接跑 napcat.mjs
+            inst = runtime.get(sid) or {}
+            uin = str(inst.get("qq") or "").strip()
             mjs = base / "napcat.mjs"
+            boot = base / "NapCatWinBootMain.exe"
+            hook = base / "NapCatWinBootHook.dll"
+            user_bat = base / "launcher-user.bat"
+            if mjs.exists() and boot.exists():
+                qq = _find_qq()
+                if qq:
+                    argv = [str(boot), qq]
+                    if hook.exists():
+                        argv.append(str(hook))
+                    if uin:
+                        argv += ["-q", uin]
+                    return argv, str(base)
+                if user_bat.exists():
+                    return ["cmd", "/c", str(user_bat)], str(base)
+                raise RuntimeError("没找到 QQ.exe；NapCat 需要 QQ NT 做宿主")
+            if user_bat.exists():
+                return ["cmd", "/c", str(user_bat)], str(base)
             if mjs.exists():
                 node = base / "node.exe"
                 if not node.exists():
-                    node = Path(shutil.which("node") or "")
-                if node and Path(node).exists():
+                    found = shutil.which("node")
+                    node = Path(found) if found else None
+                if node and node.exists():
                     return [str(node), str(mjs)], str(base)
                 raise RuntimeError("NapCat 需要 node.exe，包解压不完整")
-            boot = base / "NapCatWinBootMain.exe"
             if boot.exists():
-                qq = envcheck._first_existing(envcheck.QQ_SEARCH)
+                qq = _find_qq()
                 if not qq:
                     raise RuntimeError("没装 QQ NT，NapCat 找不到可注入的宿主")
-                return [str(boot), qq], str(base)
+                argv = [str(boot), qq]
+                if uin:
+                    argv += ["-q", uin]
+                return argv, str(base)
             raise RuntimeError("NapCat 目录里找不到启动器")
 
         raise RuntimeError(f"未知服务：{key}")
 
     # ---------- 启停 ----------
 
-    def start(self, key: str) -> dict[str, Any]:
-        st = self.states[key]
+    def start(self, key: str, iid: str | None = None) -> dict[str, Any]:
+        sid = self._iid(iid)
+        st = self._get(sid, key)
         with self.lock:
             if st.status in ("running", "starting"):
-                return {"ok": True, "status": st.status, "message": "已经在运行"}
+                return {"ok": True, "status": st.status, "message": "已经在运行", "iid": sid}
+            inst = runtime.get(sid)
+            if not inst:
+                return {"ok": False, "err": "实例不存在", "iid": sid}
+            if not bool(inst.get("enabled", True)):
+                return {"ok": False, "err": "这个实例已停用", "iid": sid}
+            runtime.ensure(sid)
             try:
-                argv, cwd = self.resolve_command(key)
+                argv, cwd = self.resolve_command(key, sid)
             except RuntimeError as e:
                 st.status = "stopped"
                 st.message = str(e)
                 self._emit()
-                return {"ok": False, "err": str(e)}
+                return {"ok": False, "err": str(e), "iid": sid}
 
-            log_path = paths.LOG_DIR / f"{key}.log"
+            log_path = runtime.log_path(sid, key)
             paths.ensure_dirs()
             rotate_log(log_path)
             try:
                 fh = open(log_path, "ab", buffering=0)
-                fh.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} 启动 {st.name} =====\n".encode("utf-8"))
+                fh.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} 启动 {st.name} · {sid} =====\n".encode("utf-8"))
                 proc = subprocess.Popen(
                     argv,
                     cwd=cwd,
@@ -190,7 +247,7 @@ class ServiceManager:
                     stderr=subprocess.STDOUT,
                     stdin=subprocess.DEVNULL,
                     creationflags=_creationflags(),
-                    env=_child_env(),
+                    env=_child_env(sid, key),
                 )
             except Exception as e:
                 st.status = "crashed"
@@ -198,29 +255,31 @@ class ServiceManager:
                 try:
                     from . import crash
 
-                    crash.record("service", f"{st.name} 启动失败", detail=str(e), key=key)
+                    crash.record("service", f"{st.name} 启动失败", detail=str(e), key=f"{sid}:{key}")
                 except Exception:
                     pass
                 self._emit()
-                return {"ok": False, "err": st.message}
+                return {"ok": False, "err": st.message, "iid": sid}
 
-            self._procs[key] = proc
+            self._procs[(sid, key)] = proc
             st.pid = proc.pid
             st.started_at = now()
             st.status = "starting"
             st.message = ""
             st.command = " ".join(argv)
             st.log = str(log_path)
-            config.write_state(f"svc-{key}.json", {
-                "pid": proc.pid, "startedAt": st.started_at, "command": st.command, "log": st.log,
+            config.write_state(f"svc-{sid}-{key}.json", {
+                "pid": proc.pid, "iid": sid, "role": key,
+                "startedAt": st.started_at, "command": st.command, "log": st.log,
             })
             self._emit()
-            return {"ok": True, "pid": proc.pid, "status": st.status}
+            return {"ok": True, "pid": proc.pid, "status": st.status, "iid": sid}
 
-    def stop(self, key: str, quiet: bool = False) -> dict[str, Any]:
-        st = self.states[key]
+    def stop(self, key: str, iid: str | None = None, quiet: bool = False) -> dict[str, Any]:
+        sid = self._iid(iid)
+        st = self._get(sid, key)
         with self.lock:
-            proc = self._procs.pop(key, None)
+            proc = self._procs.pop((sid, key), None)
             pid = st.pid or (proc.pid if proc else 0)
             if pid:
                 _kill_tree(pid)
@@ -234,91 +293,134 @@ class ServiceManager:
             st.started_at = 0
             st.message = "已手动停止"
             try:
-                config.state_file(f"svc-{key}.json").unlink()
+                config.state_file(f"svc-{sid}-{key}.json").unlink()
             except Exception:
                 pass
             if not quiet:
                 self._emit()
-            return {"ok": True, "status": st.status}
+            return {"ok": True, "status": st.status, "iid": sid}
 
-    def restart(self, key: str) -> dict[str, Any]:
-        self.stop(key, quiet=True)
+    def restart(self, key: str, iid: str | None = None) -> dict[str, Any]:
+        self.stop(key, iid, quiet=True)
         time.sleep(1.0)
-        return self.start(key)
+        return self.start(key, iid)
 
-    def start_all(self) -> dict[str, Any]:
-        order = ["napcat", "astrbot"]
-        out = {}
-        for k in order:
-            out[k] = self.start(k)
-            # NapCat 没起来就别干等端口，干等只会让「一键启动」显得卡住
+    def start_all(self, iid: str | None = None) -> dict[str, Any]:
+        sid = self._iid(iid)
+        out: dict[str, Any] = {}
+        for k in ROLES:
+            out[k] = self.start(k, sid)
             if k == "napcat" and out[k].get("ok"):
-                _wait_port(self.states[k].port or paths.DEFAULT_PORTS["napcat"], 20)
+                _wait_port(runtime.port(sid, "napcat"), 20)
         return out
 
-    def stop_all(self) -> dict[str, Any]:
-        return {k: self.stop(k) for k in ("astrbot", "napcat")}
+    def start_all_instances(self) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for inst in runtime.instances():
+            sid = str(inst.get("id") or "")
+            if sid and inst.get("enabled", True):
+                out[sid] = self.start_all(sid)
+        return out
+
+    def stop_all(self, iid: str | None = None) -> dict[str, Any]:
+        if iid:
+            sid = self._iid(iid)
+            return {k: self.stop(k, sid) for k in reversed(ROLES)}
+        out: dict[str, Any] = {}
+        for inst in runtime.instances():
+            sid = str(inst.get("id") or "")
+            if sid:
+                out[sid] = {k: self.stop(k, sid, quiet=True) for k in reversed(ROLES)}
+        return out
 
     def reap_stale(self) -> list[str]:
-        """清掉上一次没正常退出留下的子进程。
-
-        应用被强制结束（任务管理器、断电、崩溃）时子进程会变孤儿：NapCat 还连着
-        QQ，下次启动再拉一个就会端口冲突。这里按记录下来的 PID 收拾，且只认
-        本程序数据目录下的可执行文件，避免 PID 复用误杀别人的进程。
-        """
         killed: list[str] = []
-        for key in ("astrbot", "napcat"):
+        try:
+            files = list(paths.STATE_DIR.glob("svc-*.json"))
+        except Exception:
+            files = []
+        for f in files:
             try:
-                data = config.read_state(f"svc-{key}.json") or {}
+                data = config.read_state(f.name) or {}
             except Exception:
                 continue
             pid = int(data.get("pid") or 0)
             if not pid or not _pid_alive(pid):
-                if pid:
-                    config.state_file(f"svc-{key}.json").unlink(missing_ok=True)
+                f.unlink(missing_ok=True)
                 continue
-            if not _owned_by_stack(pid):
-                config.state_file(f"svc-{key}.json").unlink(missing_ok=True)
+            if not _owned_by_root(pid):
+                f.unlink(missing_ok=True)
                 continue
             _kill_tree(pid)
-            killed.append(f"{key}:{pid}")
-            config.state_file(f"svc-{key}.json").unlink(missing_ok=True)
+            killed.append(f"{data.get('iid') or 'legacy'}:{data.get('role') or f.stem}:{pid}")
+            f.unlink(missing_ok=True)
         return killed
 
     # ---------- 状态 ----------
 
-    def status(self) -> dict[str, Any]:
+    def _status_one(self, sid: str, key: str) -> dict[str, Any]:
+        st = self._get(sid, key)
+        st.port = runtime.port(sid, key)
+        running = bool(st.pid) and _pid_alive(st.pid)
+        listening = probe.tcp_open(st.port) if st.port else False
+        if st.status == "stopped" and running:
+            st.status = "running"
+        if running:
+            st.status = "running"
+        elif st.status in ("running", "starting"):
+            st.status = "crashed"
+            st.message = "进程已退出"
+            _note_crash(sid, key, st)
+        inst = runtime.get(sid) or {}
+        return {
+            "key": key,
+            "iid": sid,
+            "instance": inst.get("name") or sid,
+            "qq": inst.get("qq") or "",
+            "name": st.name,
+            "status": st.status,
+            "pid": st.pid,
+            "port": st.port,
+            "uptime": max(0, now() - st.started_at) if st.pid else 0,
+            "listening": listening,
+            "message": st.message,
+            "restarts": st.restarts,
+            "autoRestart": self._role_enabled(sid, key),
+            "log": st.log or str(runtime.log_path(sid, key)),
+            "command": st.command,
+            "resources": self._resources(st.pid),
+        }
+
+    def status(self, iid: str | None = None) -> dict[str, Any]:
+        sid = self._iid(iid)
         with self.lock:
-            items = {}
-            for key, st in self.states.items():
-                port = config.get(f"services.{key}.port", paths.DEFAULT_PORTS[key])
-                st.port = int(port or 0)
-                running = bool(st.pid) and _pid_alive(st.pid)
-                listening = probe.tcp_open(st.port) if st.port else False
-                if st.status == "stopped" and running:
-                    st.status = "running"
-                if running and st.status != "blocked":
-                    st.status = "running" if listening else ("starting" if now() - st.started_at < 90 else "running")
-                elif not running and st.status in ("running", "starting"):
-                    st.status = "crashed"
-                    st.message = "进程已退出"
-                    _note_crash(key, st)
-                items[key] = {
-                    "key": key,
-                    "name": st.name,
-                    "status": st.status,
-                    "pid": st.pid,
-                    "port": st.port,
-                    "uptime": max(0, now() - st.started_at) if st.pid else 0,
-                    "listening": listening,
-                    "message": st.message,
-                    "restarts": st.restarts,
-                    "log": st.log or str(paths.LOG_DIR / f"{key}.log"),
-                    "command": st.command,
-                    "autoRestart": bool(config.get(f"services.{key}.autoRestart", True)),
-                    "resources": self._resources(st.pid),
-                }
-            return items
+            return {key: self._status_one(sid, key) for key in ROLES}
+
+    def status_all(self) -> list[dict[str, Any]]:
+        with self.lock:
+            active = runtime.active_id()
+            out = []
+            for inst in runtime.instances():
+                sid = str(inst.get("id") or "")
+                if not sid:
+                    continue
+                svc = {key: self._status_one(sid, key) for key in ROLES}
+                out.append({
+                    "id": sid,
+                    "name": inst.get("name") or sid,
+                    "qq": inst.get("qq") or "",
+                    "enabled": bool(inst.get("enabled", True)),
+                    "active": sid == active,
+                    "root": str(runtime.instance_dir(sid)),
+                    "ports": {
+                        "onebot": runtime.port(sid, "onebot"),
+                        "napcat": runtime.port(sid, "napcat"),
+                        "astrbot": runtime.port(sid, "astrbot"),
+                    },
+                    "services": svc,
+                    "running": any(v.get("status") in ("running", "starting") for v in svc.values()),
+                })
+            return out
 
     def _resources(self, pid: int) -> dict[str, Any]:
         if not pid:
@@ -348,47 +450,58 @@ class ServiceManager:
             return {"cpu": 0.0, "rss": 0, "procs": 0}
 
     def onepass(self) -> None:
-        """一次体检：刷新状态、必要时自动重启。"""
-        st_all = self.status()
         changed = False
-        for key, st in self.states.items():
-            info = st_all[key]
-            if info["status"] == "crashed" and info["autoRestart"]:
-                st.fails = [t for t in st.fails if time.time() - t < FAIL_WINDOW_SEC]
-                if len(st.fails) >= FAIL_LIMIT:
-                    if st.status != "blocked":
-                        st.status = "blocked"
-                        st.message = "10 分钟内连续失败 5 次，已停止自动重启"
-                        bus.emit("notice", {
-                            "level": "error",
-                            "text": f"{st.name} 连续崩溃，已熔断自动重启",
-                        })
-                        try:
-                            from . import crash
-
-                            crash.record("service", f"{st.name} 连续崩溃，已停止自动重启",
-                                         detail=f"10 分钟内失败 {len(st.fails)} 次", key=key)
-                        except Exception:
-                            pass
-                        changed = True
+        with self.lock:
+            keys = list(self.states.keys())
+            for sid, key in keys:
+                try:
+                    info = self._status_one(sid, key)
+                except Exception:
                     continue
-                delay = RESTART_BACKOFF[min(len(st.fails), len(RESTART_BACKOFF) - 1)]
-                last = st.fails[-1] if st.fails else 0
-                if time.time() - last >= delay:
-                    st.fails.append(time.time())
-                    st.restarts += 1
-                    bus.emit("notice", {
-                        "level": "warn",
-                        "text": f"{st.name} 掉线，正在第 {st.restarts} 次自动拉起",
-                    })
-                    self.start(key)
-                    changed = True
+                st = self._get(sid, key)
+                if info["status"] == "crashed" and info["autoRestart"]:
+                    st.fails = [t for t in st.fails if time.time() - t < FAIL_WINDOW_SEC]
+                    if len(st.fails) >= FAIL_LIMIT:
+                        if st.status != "blocked":
+                            st.status = "blocked"
+                            st.message = "10 分钟内连续失败 5 次，已停止自动重启"
+                            bus.emit("notice", {
+                                "level": "error",
+                                "text": f"{st.name}（{sid}）连续崩溃，已熔断自动重启",
+                            })
+                            try:
+                                from . import crash
+
+                                crash.record("service", f"{st.name} 连续崩溃，已停止自动重启",
+                                             detail=f"10 分钟内失败 {len(st.fails)} 次", key=f"{sid}:{key}")
+                            except Exception:
+                                pass
+                            changed = True
+                        continue
+                    delay = RESTART_BACKOFF[min(len(st.fails), len(RESTART_BACKOFF) - 1)]
+                    last = st.fails[-1] if st.fails else 0
+                    if time.time() - last >= delay:
+                        st.fails.append(time.time())
+                        st.restarts += 1
+                        bus.emit("notice", {
+                            "level": "warn",
+                            "text": f"{st.name}（{sid}）掉线，正在第 {st.restarts} 次自动拉起",
+                        })
+                        self.start(key, sid)
+                        changed = True
         if changed or time.time() - self._last_emit > 1.5:
             self._emit()
 
     def _emit(self) -> None:
         self._last_emit = time.time()
-        bus.emit("status", {"services": self.status(), "ts": now()})
+        try:
+            bus.emit("status", {
+                "services": self.status(),
+                "instances": self.status_all(),
+                "ts": now(),
+            })
+        except Exception:
+            pass
 
     def _loop(self) -> None:
         while not self._stop.wait(2.0):
@@ -398,32 +511,82 @@ class ServiceManager:
                 continue
 
 
-def _note_crash(key: str, st: ServiceState) -> None:
-    """服务掉了记一笔，附上日志尾巴——只有「进程已退出」四个字等于没说。"""
+def _note_crash(iid: str, key: str, st: ServiceState) -> None:
     try:
         from . import crash, logs
 
-        detail = f"端口 {st.port}，PID {st.pid}"
+        detail = f"实例 {iid}，端口 {st.port}，PID {st.pid}"
         if st.started_at:
             detail += time.strftime("，启动于 %Y-%m-%d %H:%M:%S", time.localtime(st.started_at))
         try:
-            res = logs.tail(str(st.log or (paths.LOG_DIR / f"{key}.log")), 40, compact=True)
+            res = logs.tail(str(st.log or runtime.log_path(iid, key)), 40, compact=True)
             tail = "\n".join(res.get("lines") or [])[-1800:]
             if tail:
                 detail += "\n\n最后几行：\n" + tail
         except Exception:
             pass
-        crash.record("service", f"{st.name} 意外退出", detail=detail, key=key)
+        crash.record("service", f"{st.name} 意外退出", detail=detail, key=f"{iid}:{key}")
     except Exception:
         pass
 
 
-def _split(cmd: str) -> list[str]:
-    """按 Windows 习惯拆命令。
+def _find_qq() -> str:
+    hit = envcheck._first_existing(envcheck.QQ_SEARCH)
+    if hit:
+        return hit
+    try:
+        import winreg  # type: ignore
 
-    posix=False 会把引号留在 token 里，`"C:\\Python\\python.exe" ...` 直接找不到文件，
-    而 Windows 上带空格的路径几乎一定要加引号，所以这里手工剥一层。
-    """
+        for root, key in (
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\QQ"),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\QQ"),
+        ):
+            try:
+                with winreg.OpenKey(root, key) as k:
+                    val, _ = winreg.QueryValueEx(k, "UninstallString")
+                    p = Path(str(val).strip('"')).parent / "QQ.exe"
+                    if p.is_file():
+                        return str(p)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return ""
+
+
+def _napcat_base() -> Path | None:
+    """找到含 napcat.mjs / 启动器的目录。"""
+    hit = envcheck._first_existing(envcheck.NAPCAT_SEARCH)
+    cands: list[Path] = []
+    if hit:
+        p = Path(hit)
+        cands.append(p if p.is_dir() else p.parent)
+    root = paths.STACK_DIR / "napcat"
+    if root.is_dir():
+        cands.append(root)
+        cands.append(root / "napcat")
+        cands.append(root / "bootmain")
+        try:
+            for mjs in root.rglob("napcat.mjs"):
+                cands.append(mjs.parent)
+                break
+        except Exception:
+            pass
+    seen: set[str] = set()
+    for base in cands:
+        try:
+            key = str(base.resolve()).lower()
+        except Exception:
+            key = str(base).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if (base / "napcat.mjs").exists() or (base / "NapCatWinBootMain.exe").exists():
+            return base
+    return None
+
+
+def _split(cmd: str) -> list[str]:
     import shlex
 
     try:
@@ -438,17 +601,15 @@ def _split(cmd: str) -> list[str]:
     return out
 
 
-def _owned_by_stack(pid: int) -> bool:
-    """PID 是否属于本程序数据目录下的进程（防止 PID 复用误杀）。"""
+def _owned_by_root(pid: int) -> bool:
     try:
         import psutil  # type: ignore
 
         p = psutil.Process(pid)
         exe = (p.exe() or "").lower()
-        root = str(paths.STACK_DIR).lower()
+        root = str(paths.ROOT).lower()
         if exe.startswith(root):
             return True
-        # cmd.exe / 系统解释器本身不在 stack 下，看命令行有没有引用 stack
         try:
             cmd = " ".join(p.cmdline() or []).lower()
         except Exception:

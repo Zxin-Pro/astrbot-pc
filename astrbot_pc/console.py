@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import codecs
 import os
 import subprocess
 import time
@@ -70,7 +71,7 @@ def run(cmd: str, cwd: str = "", timeout: int = 60) -> dict[str, Any]:
             raw, _ = proc.communicate(timeout=5)
         except Exception:
             raw = b""
-    out = (raw or b"").decode("utf-8", "replace")
+    out = _decode(raw or b"")
     cut = False
     if len(out) > MAX_OUTPUT:
         half = MAX_OUTPUT // 2
@@ -86,6 +87,22 @@ def run(cmd: str, cwd: str = "", timeout: int = 60) -> dict[str, Any]:
         "cwd": str(work),
         "cmd": cmd,
     }
+
+
+def _decode(raw: bytes) -> str:
+    """cmd 的中文输出在简中系统是 GBK；先按 UTF-8 严格试，失败再回退。"""
+    if not raw:
+        return ""
+    if raw.startswith(codecs.BOM_UTF8):
+        return raw.decode("utf-8-sig", "replace")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return raw.decode("gbk")
+    except UnicodeDecodeError:
+        return raw.decode("gbk", "replace")
 
 
 def _kill_tree(pid: int) -> None:

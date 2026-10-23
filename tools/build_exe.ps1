@@ -1,4 +1,4 @@
-# 一条命令出两种 exe + 发布用文件：
+﻿# 一条命令出两种 exe + 发布用文件：
 #   powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 #
 # 产物：
@@ -13,7 +13,7 @@
 # 中文脚本会按 ANSI 解码，引号会被吃掉，报 "string is missing the terminator"。
 
 param(
-  [string]$Version = '1.5.0'
+  [string]$Version = '1.0.0'
 )
 
 $ErrorActionPreference = 'Stop'

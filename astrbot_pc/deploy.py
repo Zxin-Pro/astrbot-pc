@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
-from . import config, download, envcheck, instances, paths, probe
+from . import config, download, envcheck, instances, paths, probe, runtime
 from .events import bus
 
 STAGES: list[dict[str, str]] = [
@@ -513,26 +513,28 @@ class DeployRunner:
         return proc.wait(), "\n".join(tail)
 
     def _stage_config(self, dry_run: bool) -> tuple[bool, str]:
-        # 用「当前实例」而不是第一个：实例页切了号，接线要跟着走
-        inst = instances.active()
-        ws_port = int(inst.get("port") or paths.DEFAULT_PORTS["onebot"])
-        napcat_port = int(inst.get("napcatPort") or paths.DEFAULT_PORTS["napcat"])
-        webui_port = int(inst.get("astrbotPort") or paths.DEFAULT_PORTS["astrbot"])
-        token = inst.get("token") or ""
+        # 每个实例有自己的 AstrBot 数据根和 NapCat 工作目录，接线只写当前实例
+        inst = runtime.active()
+        sid = str(inst.get("id") or "bot1")
+        spec = runtime.spec(sid)
+        ws_port = int(spec["onebotPort"])
+        webui_port = int(spec["astrbotPort"])
+        token = str(inst.get("token") or "")
         if dry_run:
-            return True, f"演练模式：将写入 OneBot → ws://127.0.0.1:{ws_port}/ws"
+            return True, f"演练模式：将写入实例 {sid} 的 OneBot → ws://127.0.0.1:{ws_port}/ws"
 
         written: list[str] = []
+        runtime.ensure(sid)
 
         # NapCat 运行时先找 onebot11_<QQ>.json，没有就回退读 onebot11.json 再另存。
         # 部署时还不知道 QQ 号，所以写不带后缀的那份，登录后会自动复制过去。
-        cfg_dir = paths.STACK_DIR / "napcat" / "config"
+        cfg_dir = runtime.napcat_config(sid)
         cfg_dir.mkdir(parents=True, exist_ok=True)
         (cfg_dir / "onebot11.json").write_text(
             json.dumps({
                 "network": {
                     "websocketClients": [{
-                        "name": "astrbot",
+                        "name": f"astrbot-{sid}",
                         "enable": True,
                         "url": f"ws://127.0.0.1:{ws_port}/ws",
                         "messagePostFormat": "array",
@@ -552,7 +554,7 @@ class DeployRunner:
         written.append(f"NapCat OneBot → {ws_port}")
 
         # AstrBot 只认 data/cmd_config.json，写进 data/config/ 会被当作不存在
-        data_dir = paths.STACK_DIR / "astrbot" / "data"
+        data_dir = runtime.astrbot_data(sid)
         data_dir.mkdir(parents=True, exist_ok=True)
         conf_path = data_dir / "cmd_config.json"
         conf = {}
@@ -567,7 +569,7 @@ class DeployRunner:
         platforms = [p for p in (conf.get("platform") or [])
                      if not (isinstance(p, dict) and p.get("type") == "aiocqhttp")]
         platforms.append({
-            "id": "astrbot-pc",
+            "id": f"astrbot-pc-{sid}",
             "type": "aiocqhttp",
             "enable": True,
             "ws_reverse_host": "0.0.0.0",
@@ -585,10 +587,11 @@ class DeployRunner:
             return True, "演练模式：真机时这里会拉起 NapCat 并等二维码"
         from .services import manager
 
-        res = manager.start("napcat")
+        sid = runtime.active_id() or "bot1"
+        res = manager.start("napcat", sid)
         if not res.get("ok"):
             return False, res.get("err", "启动失败")
-        port = int(config.get("services.napcat.port", paths.DEFAULT_PORTS["napcat"]))
+        port = runtime.port(sid, "napcat")
         if not _wait(lambda: probe.tcp_open(port), 120):
             return False, "120 秒内没等到 NapCat WebUI，检查日志"
         return True, f"NapCat 已就绪，WebUI 端口 {port}"
@@ -598,10 +601,11 @@ class DeployRunner:
             return True, "演练模式：真机时这里会拉起 AstrBot 并等 WebUI"
         from .services import manager
 
-        res = manager.start("astrbot")
+        sid = runtime.active_id() or "bot1"
+        res = manager.start("astrbot", sid)
         if not res.get("ok"):
             return False, res.get("err", "启动失败")
-        port = int(config.get("services.astrbot.port", paths.DEFAULT_PORTS["astrbot"]))
+        port = runtime.port(sid, "astrbot")
         if not _wait(lambda: probe.tcp_open(port), 180):
             return False, "180 秒内没等到 AstrBot WebUI，检查日志"
         return True, f"AstrBot 已就绪，WebUI 端口 {port}"

@@ -16,15 +16,14 @@ import string
 from pathlib import Path
 from typing import Any
 
-from . import paths
+from . import paths, runtime
 
 DEFAULT_PASSWORD = "astrbot"
 ITERATIONS = 600_000
-CONF = paths.STACK_DIR / "astrbot" / "data" / "cmd_config.json"
 
 
 def _conf_path() -> Path:
-    return CONF
+    return runtime.cmd_path()
 
 
 def _load() -> dict[str, Any]:
@@ -81,7 +80,10 @@ def info() -> dict[str, Any]:
         hint = "密码已加密保存，看不到原文；忘了就点「重设密码」"
     else:
         hint = "密码已加密保存，看不到原文；忘了就点「重设密码」"
-    port = int(dash.get("port") or paths.DEFAULT_PORTS["astrbot"] or 6185)
+    try:
+        port = int(runtime.port(runtime.active_id(), "astrbot"))
+    except Exception:
+        port = int(dash.get("port") or paths.DEFAULT_PORTS["astrbot"] or 6185)
     return {
         "ok": True,
         "username": username,

@@ -200,3 +200,25 @@ pythonnet 3.x 靠 `clr_loader` + `cffi` 去找 `Python.Runtime.dll`；这两个�
 `saveSetting()` 只写后端并把结果返回，`ctx.store.config` 不会自动刷新。背景图、玻璃三档、精简模式这类「立即看得见」的项，保存后必须在本地同步应用（`paintBackdrop` / `applyGlass` / `applyCompact`）并更新 store，否则用户会以为没生效，再点一次。
 
 **打包脚本别再指望 PATH 里那个 python。** `tools/build_exe.ps1` 现在先 `Get-Command python`，找不到再退到 `%LOCALAPPDATA%\Programs\Python\Python3xx\python.exe`；这台机器上 `python` 在 PATH 里也能被 `Get-Command` 找到之前，脚本一直报「无法将 python 项识别为 cmdlet」。另有一个更迷惑的坑：从别的程序里起 PowerShell 去调 exe 时，子进程环境里必须有 `PATHEXT`，否则 `& 'C:\...\python.exe'` 会被 PowerShell 当成「文档」去激活，报 `无法在管道中激活文档`，看起来像是 python 不存在。
+
+
+**改 PowerShell 脚本时，BOM 是文件的一部分。**
+`tools/build_exe.ps1` 里写着「必须存成 UTF-8 with BOM」不是洁癖：Windows PowerShell 5.1 读无 BOM 的脚本会按 ANSI 解码，中文注释里的引号被吃掉，一启动就报 `The string is missing the terminator: '.`。用编辑工具改完要检查头三个字节是不是 `EF BB BF`，不是就补回去。这个错误发生在解析阶段，日志里不会有更具体的位置。
+
+**`$ErrorActionPreference = 'Stop'` 遇到原生命令的 stderr，会在重定向时直接终止脚本。**
+构建脚本里 `& $py -m PyInstaller ...` 只写 WARNING 到 stderr，本身退出码是 0；但外层用 `powershell -File tools\build_exe.ps1 *> build.log` 收集输出时，PowerShell 5.1 会把原生命令的 stderr 包成 ErrorRecord，`Stop` 立刻终止，日志停在 `[3/6] pyinstaller onedir`、后面一个字都没有。改成 `cmd /c "powershell -File ... > build.log 2>&1"`，让 cmd 负责重定向，stderr 就不会变成终止错误。诊断时先手工跑一遍被吞掉的命令，能立刻分清是构建坏了还是日志坏了。
+
+**cmd 输出的是 GBK，不是 UTF-8。**
+内置终端用 `raw.decode("utf-8", "replace")` 读 `cmd /c ver`，中文「版本」变成一串乱码。正确顺序是：空输出直接返回；有 UTF-8 BOM 用 `utf-8-sig`；严格 UTF-8 能解就用；失败回退 `gbk`；再失败才 `gbk` + `replace`。不要一上来就用 `replace`，它会把「不是 UTF-8」这件事悄悄吞掉。
+
+**按钮在 DOM 里，不等于点了有反应。**
+排障页的「运行」按钮带着 `data-act="term-run"`，样式和位置都对，点下去却毫无反应——根 click 处理器里根本没有 `term-run` 这个分支，只有别的几个动作。这类 bug 用截图看不出来，必须在浏览器里点一次并观察有没有发出请求。新增 `data-act` 时，把「加按钮」和「加分支」当成同一步。
+
+**隐藏的 checkbox 不能当点击热区。**
+`.switch` 用 `<span>` 包一个透明 `<input type="checkbox">`，而 `.switch input` 的宽高是 0；用户点轨道时事件落不到 input 上，开关永远点不动，只有键盘能改。把 input 改成 `position:absolute; inset:0; width:100%; height:100%; z-index:2; cursor:pointer`，整块轨道都成为热区。判断方法：鼠标点一次看状态变不变，别只测 `checked = true`。
+
+**「没有安装」和「已是最新」是两种状态。**
+组件表里 AstrBot / NapCat 没装时，`latest === current` 这类判断会落到「已最新」的绿色徽标上，用户以为一切正常。状态判断要先把 `!installed` 单独拎出来显示「未安装」，再比较版本。
+
+**旧版的全局端口不是新实例的保留端口。**
+多实例迁移时 `migrate_ports()` 一开始把 `services.napcat.port` / `services.astrbot.port` 也放进已占用集合，结果第一个实例被挤到 6100/6186，界面上的端口和用户记忆里的 6099/6185 对不上。这两个键是 1.0.0 之前「全局只有一对进程」时代的遗留配置，迁移时只该保留真正的全局项（UI 端口），实例端口从默认值重新分配。

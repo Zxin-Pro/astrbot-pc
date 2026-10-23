@@ -698,7 +698,12 @@ body.no-shell .titlebar { grid-template-columns: 1fr auto 1fr; }
   cursor: pointer;
   user-select: none;
 }
-.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch input {
+  /* 铺满整个开关：外面常是 <span class="switch">，点轨道必须也能命中 input；
+     以前宽高为 0，只能靠键盘操作，鼠标点不动。 */
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  margin: 0; opacity: 0; cursor: pointer; z-index: 2;
+}
 .switch__track {
   width: var(--w); height: 23px;
   border-radius: var(--r-full);
@@ -1922,6 +1927,14 @@ body.no-shell .titlebar { grid-template-columns: 1fr auto 1fr; }
 .preset-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .preset-row .btn { flex-direction: column; align-items: flex-start; gap: 2px; height: auto; padding: 10px 14px; }
 .preset-row .btn small { font-size: var(--f-11); color: var(--ink-4); font-weight: 400; }
+.chat-log { display: flex; flex-direction: column; gap: 10px; max-height: 360px; overflow: auto; padding: 4px 2px; }
+.chat-msg { display: flex; flex-direction: column; gap: 4px; max-width: 88%; }
+.chat-msg--user { align-self: flex-end; align-items: flex-end; }
+.chat-msg__who { font-size: var(--f-11); color: var(--ink-4); }
+.chat-msg__text { padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-2); color: var(--ink-2); font-size: var(--f-13); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.chat-msg--user .chat-msg__text { background: rgba(37, 99, 235, .10); border-color: rgba(37, 99, 235, .28); color: var(--ink); }
+.chat-msg small { font-size: var(--f-11); }
+
 
 /* v1.5.0 排障页 */
 .diag-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 14px; border-bottom: 1px solid var(--line); }

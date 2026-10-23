@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import api, config, paths, stats
+from . import api, config, metrics, paths, stats
 from .events import bus
 from .services import manager
 
@@ -270,6 +270,10 @@ class Server:
         self.thread = threading.Thread(target=self.httpd.serve_forever, name="http", daemon=True)
         self.thread.start()
         manager.start_monitor()
+        try:
+            metrics.start()
+        except Exception:
+            pass
         self._start_tick()
         self._hook_logs()
         return self.url
@@ -278,8 +282,8 @@ class Server:
         def loop() -> None:
             while not self._tick_stop.wait(2.0):
                 try:
-                    info = manager.states.get("astrbot")
-                    online = bool(info and info.status == "running")
+                    info = manager.status().get("astrbot") or {}
+                    online = info.get("status") == "running"
                     stats.tick(online)
                 except Exception:
                     continue
@@ -318,6 +322,10 @@ class Server:
 
     def stop(self) -> None:
         self._tick_stop.set()
+        try:
+            metrics.stop()
+        except Exception:
+            pass
         if self.httpd:
             try:
                 self.httpd.shutdown()

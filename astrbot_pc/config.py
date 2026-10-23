@@ -71,6 +71,9 @@ DEFAULTS: dict[str, Any] = {
         "apiBase": "https://worldcodes.online/v1",
         "model": "",
         "personaId": "",
+        # 多线路：按 priority 升序，第一条是主线路，其余交给 AstrBot 的
+        # fallback_provider_ids 自动切换。
+        "routes": [],
     },
     "backup": {
         "keep": 10,

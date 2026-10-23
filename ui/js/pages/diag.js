@@ -13,7 +13,7 @@ const STATUS = {
 };
 
 export function mount(root, ctx) {
-  const state = { doctor: null, crashes: [], diags: [], busy: false, term: null };
+  const state = { doctor: null, crashes: [], diags: [], busy: false, term: null, e2e: null };
 
   root.innerHTML = `
     <div class="page">
@@ -28,6 +28,16 @@ export function mount(root, ctx) {
       <div class="section">
         <div class="section-head"><h2>体检</h2></div>
         <div class="card card--tight" id="doctor-card"><p class="hint">正在体检…</p></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">
+          <h2>端到端自检</h2>
+          <span class="hint">从实例、NapCat、AstrBot 到模型和网页会话，六段各查一次</span>
+          <span class="grow"></span>
+          <button class="btn btn--sm btn--primary" data-act="e2e">${icon('route', 15)}开始自检</button>
+        </div>
+        <div class="card card--tight" id="e2e-card"><p class="hint">还没跑。点右上「开始自检」，哪一段不通会写清楚。</p></div>
       </div>
 
       <div class="section">
@@ -115,6 +125,38 @@ export function mount(root, ctx) {
       <div class="diag-list">${rows}</div>`;
   }
 
+  function paintE2E() {
+    const el = root.querySelector('#e2e-card');
+    if (!el) return;
+    const d = state.e2e;
+    if (!d) {
+      el.innerHTML = '<p class="hint">还没跑。点右上「开始自检」，哪一段不通会写清楚。</p>';
+      return;
+    }
+    if (!d.steps) {
+      el.innerHTML = `<p class="hint">${esc(d.err || '自检失败')}</p>`;
+      return;
+    }
+    const rows = d.steps.map((s) => {
+      const cls = s.skipped ? 'warn' : s.ok ? 'ok' : 'fail';
+      const tag = s.skipped ? '跳过' : s.ok ? '通过' : '不通';
+      return `<div class="diag-row">
+        <span class="diag-dot diag-dot--${cls}" aria-hidden="true"></span>
+        <div class="diag-row__text">
+          <strong>${esc(s.label || s.key)} <span class="diag-tag diag-tag--${cls}">${tag}</span></strong>
+          <p class="muted">${esc(s.detail || '')}${s.hint ? `<br><span class="field__help">${esc(s.hint)}</span>` : ''}</p>
+        </div>
+      </div>`;
+    }).join('');
+    el.innerHTML = `<div class="diag-summary">
+        <span class="pill ${d.ok ? 'pill--ok' : 'pill--bad'}">${d.ok ? '整体通了' : '有段不通'}</span>
+        <span class="pill">${d.ms ? d.ms + ' ms' : ''}</span>
+        <span class="grow"></span>
+        ${d.reply ? `<span class="muted" style="font-size:12px">模型回复：${esc(String(d.reply).slice(0, 60))}</span>` : ''}
+      </div>
+      <div class="diag-list">${rows}</div>`;
+  }
+
   function paintCrashes() {
     const el = root.querySelector('#crashes-card');
     if (!el) return;
@@ -179,16 +221,22 @@ export function mount(root, ctx) {
     const meta = root.querySelector('#term-meta');
     btn.disabled = true;
     meta.textContent = '运行中…';
-    const res = await api.terminal({ cmd, timeout: 60 });
-    btn.disabled = false;
-    if (!res.ok) {
+    try {
+      const res = await api.terminal({ cmd, timeout: 60 });
+      if (!res.ok) {
+        meta.textContent = '';
+        notify.error(res.err || '执行失败');
+        return;
+      }
+      out.hidden = false;
+      out.textContent = (res.out || '') + (res.truncated ? '\n…（输出太长，已截断）' : '');
+      meta.textContent = `退出码 ${res.code} · ${res.ms} ms${res.timedOut ? ' · 已超时' : ''}`;
+    } catch (err) {
       meta.textContent = '';
-      notify.error(res.err || '执行失败');
-      return;
+      notify.error(err?.message || '执行失败');
+    } finally {
+      btn.disabled = false;
     }
-    out.hidden = false;
-    out.textContent = (res.out || '') + (res.truncated ? '\n…（输出太长，已截断）' : '');
-    meta.textContent = `退出码 ${res.code} · ${res.ms} ms${res.timedOut ? ' · 已超时' : ''}`;
   }
 
   root.addEventListener('keydown', (e) => {
@@ -214,6 +262,17 @@ export function mount(root, ctx) {
       if (!res.ok) return notify.error(res.err || '导出失败');
       notify.ok(`诊断包已生成：${res.name}（${bytes(res.size || 0)}）`);
       await loadDiags();
+    } else if (act === 'e2e') {
+      btn.disabled = true;
+      const el = root.querySelector('#e2e-card');
+      if (el) el.innerHTML = '<p class="hint">正在跑，模型那一段可能要十几秒…</p>';
+      state.e2e = await api.selftestE2E();
+      btn.disabled = false;
+      paintE2E();
+      if (state.e2e?.ok) notify.ok('六段都通了');
+      else notify.warn(state.e2e?.err || '有段不通，看下面的说明');
+    } else if (act === 'term-run') {
+      await runTerm();
     } else if (act === 'crashes-refresh') {
       await loadCrashes();
     } else if (act === 'crashes-clear') {
@@ -246,6 +305,7 @@ export function mount(root, ctx) {
   });
 
   paintDoctor();
+  paintE2E();
   paintCrashes();
   paintDiags();
   loadDoctor(false);

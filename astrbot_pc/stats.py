@@ -12,7 +12,7 @@ import time
 from collections import defaultdict
 from typing import Any
 
-from . import config, paths
+from . import config
 
 HISTORY_DAYS = 30
 
@@ -20,9 +20,6 @@ HISTORY_DAYS = 30
 def _day(ts: float | None = None) -> str:
     return time.strftime("%Y-%m-%d", time.localtime(ts if ts is not None else time.time()))
 
-
-def _file(day: str):
-    return paths.state_file(f"stats-{day}.json")
 
 
 def _blank(day: str) -> dict[str, Any]:

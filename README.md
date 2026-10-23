@@ -1,6 +1,6 @@
 # 烛之控制台 · AstrBot 烛版 PC 端
 
-把手机上那套「QQ 机器人一键包」搬到 Windows：一个自绘界面的桌面客户端，负责装 NapCat 与 AstrBot、看着两个进程、扫码登录、翻日志、备份与恢复。
+把手机上那套「QQ 机器人一键包」搬到 Windows：一个自绘界面的桌面客户端，负责装 NapCat 与 AstrBot、看着每一组进程、扫码登录、翻日志、备份与恢复。
 
 界面全部是原生 HTML/CSS/ESM，没有前端构建步骤；后端只有 Python 标准库，外加 `psutil`（进程采样）和 `pystray` + `Pillow`（托盘，可选）。
 
@@ -14,9 +14,9 @@
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `AstrBotPC-1.5.0-win64-offline.zip` | 约 280 MB | **懒人版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码、全部依赖 wheel，还有一份便携 Python 3.12——部署全程不联网，也不用另装 Python |
-| `AstrBotPC-1.5.0-win64.zip` | 约 23 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载，pip 装依赖，本机要有 Python 3.10+ |
-| `AstrBotPC-1.5.0-win64-single.exe` | 约 23 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒（原因见下）。部署时联网，同样要本机 Python |
+| `AstrBotPC-1.0.0-win64-offline.zip` | 约 280 MB | **懒人版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码、全部依赖 wheel，还有一份便携 Python 3.12——部署全程不联网，也不用另装 Python |
+| `AstrBotPC-1.0.0-win64.zip` | 约 23 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载，pip 装依赖，本机要有 Python 3.10+ |
+| `AstrBotPC-1.0.0-win64-single.exe` | 约 23 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒（原因见下）。部署时联网，同样要本机 Python |
 
 三个包是**同一份程序**，界面和功能完全一样，区别只在「部署安装那几分钟怎么过」。
 
@@ -58,9 +58,11 @@ python -m astrbot_pc --headless --port 17650   # 只起服务，给脚本用
 ```
 AstrBotPC/
 ├─ config.json     设置、实例、端口
-├─ stack/          NapCat、AstrBot、环境依赖的安装位置
-├─ logs/           两个进程的输出
-├─ backups/        NapCat 配置 / AstrBot 数据 / 全量包
+├─ stack/          NapCat、AstrBot、环境依赖的安装位置（多实例共享）
+├─ logs/           每个实例每组进程的输出
+├─ backups/        NapCat 配置 / AstrBot 数据 / 全量包 / 组件快照
+├─ instances/      每个实例独立的 AstrBot data 与 NapCat config
+├─ diag/           诊断包
 ├─ state/          运行态快照
 └─ tmp/            部署过程的临时文件
 ```
@@ -72,13 +74,15 @@ AstrBotPC/
 | 页面 | 干什么 |
 | --- | --- |
 | **概览** | 今日在线、消息数、异常数、服务在线数；两个服务的状态卡；24 小时消息节奏；环境信息；最近日志 |
+| **资源** | CPU / 内存 / 磁盘 / 进程数与错误率趋势（6h / 24h / 7d），进程明细，最近错误的本地规则解释与一键清空采样 |
 | **部署** | 八步向导：环境检查 → 准备目录 → 取 NapCat → 取 AstrBot → 装依赖 → 写配置 → 启 NapCat → 启 AstrBot。带「演练模式」，可以先空跑看清每一步；真实模式带下载进度条与实时 pip 输出 |
-| **模型** | 中转站、密钥、模型名、人格都在这儿配：贴一个密钥就能把 AstrBot 的 provider 和人格写好，顺手显示中转站版本号与延迟；「测连通」当场发一条 ping |
+| **模型** | 中转站、密钥、模型名、人格都在这儿配；可加主 / 备线路并测速，主线路不通时按优先级切换；「试聊」按当前人格走完整模型链路，显示耗时与 token |
 | **服务** | NapCat / AstrBot 各自的启动、重启、停止，CPU 环形图、内存、运行时长、重启次数；端口连通性表；AstrBot 控制台账号（默认密码提示 / 一键重设 / 复制）；「手动对接 AstrBot」 |
 | **日志** | 按文件浏览，级别筛选，关键字搜索，跟随滚动，单文件清空 / 删除 / 下载，导出 / 导入 |
 | **登录** | 每 3 秒自动抓 NapCat 二维码，支持换一张、存图片；右侧是扫码排障清单与风控提醒 |
-| **排障** | 一键体检、内置命令行、崩溃记录、诊断包导出 / 下载 / 删除、重置部署进度；出问题先来这一页 |
-| **实例** | 一个 QQ 号一套配置：端口、访问令牌、WebUI 地址，可新建 / 编辑 / 删除；设为当前、一键接线、自动挑空闲端口、端口冲突标红 |
+| **排障** | 六段端到端自检、一键体检、内置命令行、崩溃记录、诊断包导出 / 下载 / 删除、重置部署进度；出问题先来这一页 |
+| **扩展** | 组件更新中心（PC / AstrBot / NapCat / 插件版本、检查更新、升级前快照与回滚）和插件管理器（启停、GitHub / zip 安装、配置、日志、卸载） |
+| **实例** | 一个 QQ 号一套独立的数据目录、三个端口和进程组，可同时挂多个号；支持当前实例、一键接线、自动挑空闲端口、冲突标红、分别启停 |
 | **备份** | 后台打包带进度与取消，从文件恢复，每日自动备份，下载与删除，占用统计 |
 | **设置** | 主题、玻璃三档、精简模式、自定义背景图、开机启动、托盘、自动检查更新、自动重启、首选端口、局域网访问、pip 镜像、AstrBot 安装方式、存储清理、隐私 / 协议入口、匿名统计、重置数据 |
 
@@ -107,8 +111,8 @@ AstrBotPC/
 | --- | --- | --- |
 | 本界面 API | 17650 | 仅监听 `127.0.0.1` |
 | NapCat WebUI | 6099 | 与手机版一致 |
-| AstrBot 控制台 | 6185 | 与手机版一致 |
-| OneBot 反向 WS | 6199 | NapCat → AstrBot |
+| AstrBot 控制台 | 6185 | 与手机版一致；第一个实例默认用这三项，后续实例自动避让 |
+| OneBot 反向 WS | 6199 | NapCat → AstrBot；每个实例一组 |
 
 端口可以在「实例」页改；改完在「服务」页重启对应进程生效。
 
@@ -133,11 +137,21 @@ astrbot-pc/
 │  ├─ deploy.py     八步部署流程（演练 / 真实）
 │  ├─ download.py   断点续传下载、解压、剥顶层目录
 │  ├─ envcheck.py   Python / Git / QQ NT / 磁盘 / 网络的体检
-│  ├─ llm.py        AstrBot 的模型与人格配置（写 cmd_config.json 与 data_v4.db）
+│  ├─ runtime.py    每实例独立根目录、端口与路径
+│  ├─ llm.py        AstrBot 的模型与人格配置（单 / 多线路、写 cmd_config.json 与 data_v4.db）
+│  ├─ failover.py   线路健康检查、优先级与故障转移
+│  ├─ selftest.py   试聊与六段端到端自检
+│  ├─ components.py 组件版本、快照、升级与回滚
+│  ├─ plugins.py    插件列表、启停、安装、配置与日志
+│  ├─ metrics.py    资源采样、趋势与报错解释
+│  ├─ console.py    内置命令行
 │  ├─ logs.py       日志列表、尾部读取、跟随
 │  ├─ instances.py  多实例 CRUD
 │  ├─ backup.py     备份、恢复、占用统计
 │  ├─ stats.py      消息量、在线时长、异常数
+│  ├─ storage.py    存储占用与清理
+│  ├─ doctor.py     体检与诊断包
+│  ├─ creds.py      AstrBot 控制台账号
 │  ├─ startup.py    开机自启（写 HKCU Run 键，免管理员）
 │  ├─ events.py     事件总线 → SSE
 │  ├─ tray.py       托盘常驻：图标、菜单、通知（缺 pystray 自动降级）
@@ -147,14 +161,14 @@ astrbot-pc/
 │  ├─ index.html    外壳：标题栏、侧栏、路由出口、底图、弹层与命令面板
 │  ├─ css/          tokens.css（设计变量）+ app.css（布局与组件）+ glass.css（液态玻璃覆盖层）
 │  └─ js/           main / router / store / api / components / charts / icons / util / glass
-│     └─ pages/     dashboard / deploy / model / services / logs / login / instances / backups / settings
+│     └─ pages/     dashboard / resources / deploy / model / services / logs / login / diag / addons / instances / backups / settings
 ├─ tools/           冒烟截图、打包、图标生成与调试脚本
 │  ├─ build_exe.ps1 一条命令出 exe + 发布 zip（含离线版）
 │  ├─ build_offline.py 把 NapCat / AstrBot 源码 / wheel 收进 resources\
 │  ├─ release.py    建 GitHub Release 并上传 zip 与离线包
 │  ├─ push_api.py   只放行 api.github.com 时的推送通道
 │  ├─ make_icon.py  从一张 PNG 出多尺寸 .ico 与 favicon
-│  ├─ smoke.py      十页零报错冒烟
+│  ├─ smoke.py      十二页零报错冒烟
 │  ├─ probe_glass.py         玻璃/实色 × 深浅 的全部截图
 │  ├─ probe_glass_qa.py      卡片实际渲染色算对比度 + 滚动帧率
 │  ├─ probe_glass_overlay.py 弹层、吐司、降低透明度与降低动效
@@ -178,9 +192,9 @@ python tools\build_offline.py --lazy       # 缺什么下什么，连便携 Pyth
 
 powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 # → dist\AstrBotPC\AstrBotPC.exe                     目录版
-# → dist\AstrBotPC-1.5.0-win64.zip                   目录版压缩包（23 MB，联网装）
-# → dist\AstrBotPC-1.5.0-win64-single.exe            单文件版（23 MB，联网装）
-# → dist\AstrBotPC-1.5.0-win64-offline.zip           懒人版（280 MB，不联网也不用装 Python）
+# → dist\AstrBotPC-1.0.0-win64.zip                   目录版压缩包（23 MB，联网装）
+# → dist\AstrBotPC-1.0.0-win64-single.exe            单文件版（23 MB，联网装）
+# → dist\AstrBotPC-1.0.0-win64-offline.zip           懒人版（280 MB，不联网也不用装 Python）
 ```
 
 没有 `resources\` 时最后一行会自动跳过，其余产物不变。不加 `--lazy` 也能出离线版，只是那一包还需要用户机器上有 Python。
@@ -195,8 +209,8 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
    ```powershell
    set GITHUB_TOKEN=ghp_xxx
-   python tools\release.py        # 建 pc-v1.5.0 Release + 上传 zip 与离线包
-   python tools\upload_asset.py dist\AstrBotPC-1.5.0-win64-single.exe --tag pc-v1.5.0
+   python tools\release.py        # 建 pc-v1.0.0 Release + 上传 zip 与离线包
+   python tools\upload_asset.py dist\AstrBotPC-1.0.0-win64-single.exe --tag pc-v1.0.0
    ```
 
    tag 必须用 `pc-v<版本>` 或资产名带 `PC`——`update.py` 只认这两种，否则客户端不会提示更新。
@@ -294,13 +308,17 @@ wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。目录版和单�
 
 已跑通：
 
-- 本地服务、十个页面的完整交互、SSE 推送与断线回落，首屏 0.6s 出内容
+- 本地服务、十二个页面的完整交互、SSE 推送与断线回落，首屏 0.6s 出内容
 - 桌面窗口（pywebview 无边框，自绘最小化 / 最大化 / 关闭）
 - 托盘常驻：关窗收起、右键菜单启停服务、检查更新、退出；托盘动作走后台线程，不卡菜单
 - 检查更新：只认 PC 端发布（tag `pc-*` 或资产名含 `PC` / `Windows`），标题栏出「新版」胶囊，点开有说明与下载入口；30 分钟缓存，查不到就照实说
 - 进程管理（真的启停子进程，采样真实 CPU / 内存）；被强杀后下次启动会按记录的 PID 回收残留子进程
+- 模型多线路：主 / 备线路、健康检查、优先级，写入 AstrBot 的 `fallback_provider_ids`
+- 模型页试聊与排障页六段端到端自检，都走真实的当前实例配置
+- 「扩展」页：组件版本清单、快照 / 回滚，插件的启停、安装、配置与日志
+- 「资源」页：CPU / 内存 / 磁盘 / 进程趋势与错误解释，可清空采样
 - 日志浏览、筛选、跟随、导入导出
-- 实例增删改、备份建立 / 恢复 / 删除
+- 实例增删改、每实例独立数据目录 / 端口 / 进程组，可同时挂多个号；备份建立 / 恢复 / 删除
 - 开机自启（写 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`，不需要管理员；关掉就删键）
 - 部署向导八步全部实跑通过：真下载 NapCat 与 AstrBot、装依赖、写 OneBot 与 AstrBot 配置；写的是 AstrBot 真正会读的 `data/cmd_config.json` 与 NapCat 回退读的 `onebot11.json`
 - 下载链路：实测选源（直连 + 三个加速镜像并发测速后取最快）、断点续传、半截包不算成功、20 秒没新数据就换源
@@ -310,7 +328,7 @@ wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。目录版和单�
 - exe 已发布：<https://github.com/Zxin-Pro/astrbot-pc/releases>（懒人版约 280 MB，普通版约 23 MB，另有单文件 exe）
 - 液态玻璃界面：深浅两套主题都有；底图、玻璃、颗粒三层叠出透色，关掉即回到原实色界面
 - 模型页：贴一个密钥就把 AstrBot 的 provider 与默认模型写好，人格直接写进 `data_v4.db`；中转站卡片显示站点版本号与延迟，一键跳注册（邀请码已带好）
-- Playwright 冒烟：十页零控制台报错、零失败请求，390px 窄屏不溢出；深色主题同样过一遍
+- Playwright 冒烟：十二页零控制台报错、零失败请求，390px 窄屏不溢出；深色主题同样过一遍
 
 还没接：
 
@@ -321,105 +339,21 @@ wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。目录版和单�
 
 ## 九、更新日志
 
-### 1.5.0
-
-把手机版上「能自救」和「能自定义」的两批功能搬到 PC 端：
-
-- **新增「排障」页**：一键体检（14 项，每条带状态、说明与下一步）、内置命令行（工作目录限制在数据目录，超时连同子进程一起结束，输出超 64 KB 截断）、崩溃记录（同一错误 120 秒内合并计数）、诊断包（脱敏配置 + 服务状态 + 崩溃记录 + 日志尾巴，可下载 / 删除）、重置部署进度。
-- **备份**：后台打包带进度与取消，从文件恢复，每日自动备份，下载与占用统计；修了一个「后台已经打包成功，接口却返回失败」的 bug。
-- **实例**：设为当前、一键接线（把端口与令牌写进 NapCat 和 AstrBot）、自动挑空闲端口、端口冲突标红；修「改了端口不生效」与「只认第一个实例」。
-- **服务**：AstrBot 控制台账号卡，默认密码直接显示；忘了可生成 16 位强密码，同时写 md5 与 pbkdf2。另加「手动对接 AstrBot」。
-- **设置**：自定义背景图（叠加可读性遮罩）、玻璃三档（关 / 轻薄 / 浓厚）、精简模式、局域网访问地址、存储占用与清理、隐私政策 / 用户协议 / 免责声明、匿名统计开关。
-- **日志**：单文件清空、删除、下载；**模型**：测连通；**登录**：扫码风控提示。
-- **界面**：十个页面；`Ctrl+1…9` 跳常用页（排障从侧栏进）；深色与 390px 都过冒烟。
-- **接口级 E2E**：39 项断言，覆盖备份、日志、存储、崩溃、实例、外观、账号、模型连通（本地 mock）与终端边界。
-
-### 1.4.0
-
-新增「模型」页，AstrBot 的模型和人格不用再进它的 WebUI 点：
-
-- **新增**：贴一个密钥就能用。地址、模型名、人格都预填好，密钥一填点「保存并启用」，直接写进 AstrBot 的配置。
-- **新增**：中转站卡片显示站点名、延迟和版本号（`/api/v1/settings/public` 的 `data.version`），一键跳注册，邀请码 `CZLT` 已经带在链接里。
-- **新增**：人格预设两套（烛心 / 助手），也可以自己写；保存时写进 `data/data_v4.db` 的 `personas` 表并设为默认人格。
-- **修**：AstrBot v4 会把 provider 拆成 `provider_sources` + `provider` 两层，我们按这个结构读写，避免它每次启动都迁移一遍重写配置。老版本只有扁平结构时也照旧能写。
-- **修**：模型页的说明文字误用了校验错误的红色样式，改成中性的灰色（`.field__help`）。
-- **修**：390px 下中转站卡片标题被挤到按钮下面，窄屏改为「图标 + 标题」一行、徽标与按钮一行。
-- **修**：中转站检测回来时整页重画，会把刚贴进去的密钥冲掉（检测最长等十几秒）；现在只重画中转站那一格。
-- 保存后要重启 AstrBot 才生效——页面上有按钮，也写清了原因。
-
-### 1.3.1
-
-部署完之后右侧不再「装好了还显示没装」：
-
-- **修**：部署一结束，右侧体检会自己重新查一遍。原先它只读进页面时那份快照，后端明明已经重算过，前端没去取，于是左边八步全绿、右边还写着「NapCat 缺失」。
-- **修**：「离线资源：未内置」的红色标签改成中性的「联网安装」。普通安装包本来就不带资源，不该渲染成故障。
-- 新增回归工具 `tools/probe_env_refresh.py`：开页时 stack 是空的 → 页开着的时候把目录变出来 → 跑一次演练部署 → 断言右侧变成「就绪」。
-
-### 1.3.0
-
-懒人版，连 Python 都不用装：
-
-- **包内自带解释器**：`resources\python\` 放一份便携 Python 3.12.10（NuGet `python` 包的完整发行版，含 `Lib\venv` 与 `ensurepip`）。解压即用，用户机器上不装任何东西也能完成部署。
-- **为什么不用 embeddable zip**：那个包小 4 MB，但没有 `venv` 也没有 `ensurepip`，建不出虚拟环境。体积换功能，这里不该省。
-- **找解释器的顺序**：内置便携版 → `py -3` → PATH 里的 `python` → 常见安装目录。内置的排第一是为了让 wheel 一定配得上（cp312）。
-- **体检文案**：环境体检里那条会写「3.12.10（内置便携版，不用另装 Python）」，一眼看出用的是哪个解释器。
-- **顺带修一个静默失效**：`_stage_env` 判「有没有 Python」用的是 `"Python" in missing`，而那一项的名字是「Python 运行时」，这个判断从加上那天起就没生效过。改成按 key 判。
-- **顺带修 sdist**：`aiocqhttp` 与 `jieba` 上游只发源码包，纯离线装它们要现场编译，而 Python 3.12 的 venv 不再自带 setuptools，必然失败。构建脚本现在会就地编译成 wheel（`aiocqhttp-1.4.4-py3-none-any.whl`、`jieba-0.42.1-py3-none-any.whl`）。
-- **一键备齐**：`python tools/build_offline.py --lazy`，四样资源全下齐并校验。
-- **部署页**：「离线资源」那行四样齐全时显示「懒人版」徽标，写明不用联网也不用装 Python；确认弹层文案跟着变。
-
-### 1.2.0
-
-离线包，装的时候一步网都不用联：
-
-- **新增离线版安装包**：`AstrBotPC-1.2.0-win64-offline.zip` 里带 `resources\`，预置 NapCat、AstrBot 源码和全部依赖 wheel。解压后点「开始部署」，从第一个文件到 pip 装完都不联网。
-- **两种包是同一份程序**：`paths.RESOURCES_DIR` 认 exe 同级的 `resources\`；有就解压，没有就照旧联网下载。删掉 `resources\` 就等于退回普通版。
-- **不强塞进 exe**：单文件版仍是 18 MB。几百 MB 塞进去每次启动都得往临时目录解压，冷启动几十秒，得不偿失。
-- **环境体检多一行**：部署页右侧「环境体检」上方显示「离线资源」，写明内置了什么、这次会不会联网；缺的部分照常走网络。
-- **依赖走本地仓库**：`pip install --no-index --find-links <wheels>`。
-- **演练模式文案跟着变**：有离线包时，确认弹层和横幅改成「从内置离线包解压，不用联网」。
-- **修 exe 建不出虚拟环境**：打包后 `sys.executable` 是 `AstrBotPC.exe`，`-m venv` 直接被拒，第五步永远失败。现在先找系统里的真 Python，环境体检显示的也是它而不是 exe 自己。
-
-### 1.1.1
-
-图标换成手机版那张：
-
-- **图源**：`ui/assets/app-icon.png`，就是手机版仓库里那张 1254×1254 的插画。exe 图标、任务栏、托盘、网页标签页全用它，桌面端和手机版这才像同一个产品。
-- **小尺寸专项**：整张画缩到 16px 只剩一块深色，所以 16 / 24 / 32 三帧单独按脸部裁一个方框再缩（`FACE_BOX = (560, 130, 1180, 750)`），48 以上才用整张。任务栏和 Alt+Tab 里能看出是个人脸。
-- **生成方式**：`tools/make_icon.py` 从一张 PNG 出 `build/app.ico`（16–256 七帧）+ `favicon-32/180.png` + `mark-44.png`，纯 Pillow，不再依赖无头浏览器渲染 SVG。
-- **托盘**：不再手绘蓝底弯月，直接读 `ui/assets/mark-44.png`；文件缺失才退回手绘兜底。
-- **标题栏**：左边那个蓝色方块标记换成同一个人（`.mark` 加圆角裁切）。
-
-### 1.1.0
-
-整套界面换成液态玻璃：
-
-- **底图层**：`<html>` 下新增 `.backdrop`（四块压进内容区下方的大模糊色块）与 `.grain`（极细颗粒），玻璃后面终于有东西可透。
-- **玻璃层**：新增 `ui/css/glass.css`，只覆盖材质，不动 `app.css` 的布局。侧栏、标题栏、卡片、弹层、命令面板、吐司换成玻璃；面板里的面板保持薄实色。
-- **开关**：设置 → 外观 → 液态玻璃材质（`app.glass`）。关掉时整张 `glass.css` 被停用，等于回到原来的实色界面；首帧由 `index.html` 的内联脚本处理，不会先闪一下玻璃。
-- **可读性**：玻璃会提亮背景，所以整条文字色阶压深一档，实测卡片内最低对比度：浅色 4.89、深色 4.50；关掉玻璃是 5.44 / 9.45。
-- **系统偏好**：`prefers-reduced-transparency` 下面板退成实色、底图撤掉、侧栏回到原始配色；`prefers-reduced-motion` 关闭色块位移。
-- **性能**：玻璃层数控制在能跑满帧的范围，八页滚动 p95 实测 59–60fps；不做连续动效，因为 `backdrop-filter` 每帧重算。
-- **顺带修**：390px 下顶栏标题折行把搜索框挤出屏幕；窄屏侧栏的「一键启动」按钮被切角。
-- **顺带修**：新建实例弹窗里输入框在浅色主题下白底白边，等于看不见——输入框改成按文字色减淡的凹槽，深浅通用。
-
-### 1.0.1
-
-修的都是「点了部署以为装好了，其实一个文件没落地」这一类：
-
-- **写错了配置文件路径**：AstrBot 只读 `data/cmd_config.json`，原来写进 `data/config/cmd_config.json`，平台等于没配，装完也连不上 NapCat。NapCat 那边同理，原来写 `onebot11_default.json`，而它会先找 `onebot11_<QQ号>.json`、找不到才回退读 `onebot11.json`——只认后者。
-- **演练模式不再冒充装好**：演练只做检查不动文件，原来八步全绿、结束写「全部完成」，看着像装完了。现在结束文案是「演练通过：没有任何文件被安装」，界面上也会标出来。
-- **联网检查不再假阳性**：原来只 `HEAD github.com`，握手超时也会被 DNS 拖住几十秒再报错，而下载走的是另一条链路。改成用下载源本身测速，选不出源就直接说「连不上下载源」。
-- **下载链路重写**：直连 + 三个加速镜像并发测速取最快；20 秒收不到新数据就换源；换源保留 `.part` 续传；半截包按失败处理（原来会当成功）。
-- **子进程日志乱码**：给子进程补 `PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1`，否则输出重定向到文件时 Windows 上退回 GBK，中文变乱码、带 emoji 的行直接抛 `UnicodeEncodeError` 丢掉。
-- **命令带引号跑不起来**：`shlex.split(posix=False)` 会把引号留在 token 里，`"C:\...\python.exe"` 直接报「系统找不到指定的文件」。
-- **没装时报错文不对题**：`Path("")` 等于 `Path(".")`，明明没装却说「目录里找不到 main.py，可能装坏了」。
-- **强杀后留孤儿**：应用被强制结束时 NapCat 还连着 QQ、下次启动端口冲突。现在启动时按记录的 PID 回收，且只认数据目录下的进程，不会误杀别的。
-- 新增设置项「下载加速镜像」（`deploy.accel`），关掉就只走直连。
-
 ### 1.0.0
 
-首个 PC 版：八个页面、桌面窗口与托盘、检查更新、进程管理、日志、实例与备份、开机自启、部署向导。
+版本号从这一版重新起算，之前发布的 PC 版本与 tag 已全部撤下；以后按 1.0.x / 1.1.x 的小版本节奏走。
+
+这一版把 PC 端补成能和多实例、排障、扩展打交道的完整控制台：
+
+- **真正多实例**：一个 QQ 号一套独立的 AstrBot 数据目录、NapCat 工作目录、三个端口和进程组；两个号能同时在线，互不抢配置，实例页可分别启停。
+- **模型线路故障转移**：可配置主线路与任意条备用线路，保存时写入 AstrBot 的 `fallback_provider_ids`；线路卡显示密钥打码、优先级、健康状态与延迟，不健康时自动落到下一条。
+- **试聊与端到端自检**：模型页按当前人格直接聊一句，显示模型、耗时和 token；排障页六段自检（实例 / NapCat / AstrBot / 模型 / 控制台 / 网页会话）逐段给出通或不通、卡在哪、下一步点哪里。
+- **插件管理器**：「扩展」页列插件、启停、从 GitHub 或本地 zip 安装、更新、卸载、看配置与日志；启停写入 AstrBot 的 `shared_preferences.json`，并说明要重启才生效。
+- **组件更新中心**：集中显示 PC、AstrBot、NapCat 与插件版本；可查最新版、升级前自动快照、从快照回滚；升级动作给出官方发布页，避免把源码树换坏。
+- **资源看板与报错解释**：CPU、内存、磁盘、进程数与错误率按 6h / 24h / 7d 画趋势；最近错误可点「解释」，用本地规则给出原因与处理步骤；可清空采样。
+- **排障页**：体检、内置命令行（GBK / UTF-8 自动识别，超时连子进程一起收）、崩溃记录、诊断包导出 / 下载 / 删除。
+- **十二个页面**：概览 / 资源 / 部署 / 模型 / 服务 / 日志 / 登录 / 排障 / 扩展 / 实例 / 备份 / 设置；`Ctrl+1…9` 跳常用页，深色与 390px 都过冒烟。
+- **兼容旧数据**：首次启动会把旧 stack 配置迁进 `instances/<id>/`，旧实例自动补端口与 NapCat 密钥；不会动你已经装好的文件。
 
 ---
 

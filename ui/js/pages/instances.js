@@ -19,6 +19,14 @@ export function mount(root, ctx) {
 
   const list = root.querySelector('#inst-list');
   let conflicts = [];
+  let statusAll = [];
+  let timer = null;
+
+  async function loadStatuses() {
+    const res = await api.serviceStatus().catch(() => null);
+    statusAll = res?.instances || [];
+    render();
+  }
 
   async function loadConflicts() {
     const res = await api.conflicts();
@@ -54,7 +62,8 @@ export function mount(root, ctx) {
   }
 
   function card(it) {
-    const svc = ctx.store.services || {};
+    const row = statusAll.find((x) => x.id === it.id) || {};
+    const svc = row.services || {};
     const running = svc.napcat?.status === 'running' || svc.astrbot?.status === 'running';
     const online = Boolean(it.onebotOpen);
     const bad = conflictOf(it);
@@ -67,7 +76,7 @@ export function mount(root, ctx) {
             <div class="svc__title">
               <h3>${esc(it.name || '未命名')}
                 ${it.active ? '<span class="pill pill--brand">当前</span>' : ''}
-                ${it.enabled === false ? '<span class="pill">已停用</span>' : running && it.active ? '<span class="pill pill--ok">在用</span>' : '<span class="pill">待机</span>'}
+                ${it.enabled === false ? '<span class="pill">已停用</span>' : running ? '<span class="pill pill--ok">运行中</span>' : '<span class="pill">待机</span>'}
               </h3>
               <p class="mono">${esc(it.qq || '未绑定 QQ')}</p>
             </div>
@@ -80,12 +89,14 @@ export function mount(root, ctx) {
         <dl class="kv">
           <div class="kv__row"><dt>OneBot 端口</dt><dd class="mono">${esc(String(it.port || 6199))}${online ? '<i class="dot dot--ok" title="端口已监听"></i>' : ''}</dd></div>
           <div class="kv__row"><dt>NapCat WebUI</dt><dd class="mono">${esc(String(it.napcatPort || 6099))}</dd></div>
+          <div class="kv__row"><dt>AstrBot Dashboard</dt><dd class="mono">${esc(String(it.astrbotPort || 6185))}</dd></div>
           <div class="kv__row"><dt>访问令牌</dt><dd class="mono">${it.token ? '已设置' : '<span class="muted">空</span>'}</dd></div>
           <div class="kv__row"><dt>创建时间</dt><dd>${fdate(it.createdAt)}</dd></div>
         </dl>
         <div class="instance__foot">
           <button class="btn btn--sm btn--ghost" data-act="copy-token" data-id="${esc(it.id)}">${icon('copy', 13)}复制令牌</button>
           <button class="btn btn--sm btn--ghost" data-act="apply" data-id="${esc(it.id)}" title="把这个实例的端口与端口令牌写进 AstrBot / NapCat 配置">${icon('route', 13)}一键接线</button>
+          ${running ? `<button class="btn btn--sm" data-act="restart-inst" data-id="${esc(it.id)}">${icon('refresh', 13)}重启</button><button class="btn btn--sm btn--danger" data-act="stop-inst" data-id="${esc(it.id)}">${icon('stop', 13)}停止</button>` : `<button class="btn btn--sm btn--primary" data-act="start-inst" data-id="${esc(it.id)}">${icon('play', 13)}启动</button>`}
           ${it.active ? '' : `<button class="btn btn--sm" data-act="active" data-id="${esc(it.id)}">设为当前</button>`}
           <span class="grow"></span>
           <span class="muted" style="font-size:11.5px">${esc(it.id)}</span>
@@ -113,6 +124,10 @@ export function mount(root, ctx) {
         <label class="field">
           <span class="field__label">NapCat WebUI 端口</span>
           <input class="input mono" name="napcatPort" type="number" min="1024" max="65535" value="${v.napcatPort || 6099}" />
+        </label>
+        <label class="field">
+          <span class="field__label">AstrBot Dashboard 端口</span>
+          <input class="input mono" name="astrbotPort" type="number" min="1024" max="65535" value="${v.astrbotPort || 6185}" />
         </label>
         <div class="row-actions field--full">
           <button class="btn btn--sm" type="button" data-act="auto-port">${icon('bolt', 14)}自动挑空闲端口</button>
@@ -176,7 +191,8 @@ export function mount(root, ctx) {
       if (!res.ok) return notify.error(res.err || '找空闲端口失败');
       m.root.querySelector('[name="port"]').value = res.port;
       m.root.querySelector('[name="napcatPort"]').value = res.napcatPort;
-      notify.ok(`挑到 ${res.port} / ${res.napcatPort}`);
+      m.root.querySelector('[name="astrbotPort"]').value = res.astrbotPort;
+      notify.ok(`挑到 ${res.port} / ${res.napcatPort} / ${res.astrbotPort}`);
     });
     const first = m.root.querySelector('input[name="name"]');
     if (first) setTimeout(() => first.focus(), 60);
@@ -189,6 +205,7 @@ export function mount(root, ctx) {
       qq: get('qq').value.trim(),
       port: Number(get('port').value) || 6199,
       napcatPort: Number(get('napcatPort').value) || 6099,
+      astrbotPort: Number(get('astrbotPort').value) || 6185,
       token: get('token').value.trim(),
       enabled: get('enabled').checked,
     };
@@ -203,6 +220,8 @@ export function mount(root, ctx) {
 
   render();
   loadConflicts();
+  loadStatuses();
+  timer = setInterval(loadStatuses, 8000);
 
   root.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-act]');
@@ -238,6 +257,27 @@ export function mount(root, ctx) {
       notify.ok(`已切到「${it.name}」`);
       await ctx.refreshInstances();
       render();
+    } else if (act === 'start-inst' && it) {
+      btn.disabled = true;
+      const res = await api.service('all', 'start', it.id);
+      btn.disabled = false;
+      if (!res.ok) notify.error(res.err || '启动失败');
+      else notify.ok('已启动，稍等十几秒');
+      setTimeout(loadStatuses, 1200);
+    } else if (act === 'stop-inst' && it) {
+      btn.disabled = true;
+      const res = await api.service('all', 'stop', it.id);
+      btn.disabled = false;
+      if (!res.ok) notify.error(res.err || '停止失败');
+      else notify.ok('已停止');
+      setTimeout(loadStatuses, 800);
+    } else if (act === 'restart-inst' && it) {
+      btn.disabled = true;
+      const res = await api.service('all', 'restart', it.id);
+      btn.disabled = false;
+      if (!res.ok) notify.error(res.err || '重启失败');
+      else notify.ok('正在重启，稍等十几秒');
+      setTimeout(loadStatuses, 1500);
     } else if (act === 'apply' && it) {
       btn.disabled = true;
       const res = await api.instanceApply(it.id);
@@ -252,6 +292,9 @@ export function mount(root, ctx) {
   return {
     update(store) {
       if (store.instances) render();
+    },
+    destroy() {
+      if (timer) clearInterval(timer);
     },
   };
 }

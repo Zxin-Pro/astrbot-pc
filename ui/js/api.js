@@ -35,7 +35,8 @@ export const api = {
   env: () => request('GET', '/api/env'),
   envCheck: () => request('GET', '/api/env/check'),
 
-  service: (key, action) => request('POST', `/api/services/${key}/${action}`),
+  service: (key, action, iid) => request('POST', `/api/services/${key}/${action}`, iid ? { iid } : {}),
+  serviceStatus: (iid) => request('GET', `/api/services/status${iid ? `?iid=${encodeURIComponent(iid)}` : ''}`),
 
   deployStatus: () => request('GET', '/api/deploy/status'),
   deployStart: (dryRun) => request('POST', '/api/deploy/start', { dryRun }),
@@ -52,7 +53,7 @@ export const api = {
   instanceUpdate: (id, payload) => request('PATCH', `/api/instances/${encodeURIComponent(id)}`, payload),
   instanceDelete: (id) => request('DELETE', `/api/instances/${encodeURIComponent(id)}`),
 
-  qr: () => request('GET', '/api/qr'),
+  qr: (iid) => request('GET', `/api/qr${iid ? `?iid=${encodeURIComponent(iid)}` : ''}`),
 
   stats: (full = false) => request('GET', `/api/stats${full ? '?full=1' : ''}`),
 
@@ -82,7 +83,6 @@ export const api = {
   conflicts: () => request('GET', '/api/instances/conflicts'),
   consoleCreds: () => request('GET', '/api/console/creds'),
   consoleCredsReset: (username, password) => request('POST', '/api/console/creds', { username, password }),
-  llmTest: () => request('POST', '/api/llm/test'),
   appearance: () => request('GET', '/api/appearance'),
   setBackground: (dataUrl) => request('POST', '/api/appearance/background', { dataUrl }),
   clearBackground: () => request('DELETE', '/api/appearance/background'),
@@ -92,11 +92,47 @@ export const api = {
   saveSettings: (patch) => request('POST', '/api/settings', { patch }),
   resetSettings: () => request('POST', '/api/reset'),
 
-  llm: () => request('GET', '/api/llm'),
+  llm: (iid) => request('GET', `/api/llm${iid ? `?iid=${encodeURIComponent(iid)}` : ''}`),
   llmModel: (payload) => request('POST', '/api/llm/model', payload),
   llmPersona: (payload) => request('POST', '/api/llm/persona', payload),
   llmModels: (payload) => request('POST', '/api/llm/models', payload),
+  llmTest: (iid) => request('POST', '/api/llm/test', iid ? { iid } : {}),
   relay: () => request('GET', '/api/relay'),
+
+  llmRoutes: (iid) => request('GET', `/api/llm/routes${iid ? `?iid=${encodeURIComponent(iid)}` : ''}`),
+  llmRoutesSave: (routes, apply = true, iid) => request('POST', '/api/llm/routes', { routes, apply, iid }),
+  llmRouteDelete: (id, iid) => request('DELETE', `/api/llm/routes/${encodeURIComponent(id)}${iid ? `?iid=${encodeURIComponent(iid)}` : ''}`),
+  llmRoutesHealth: (force = false) => request('POST', '/api/llm/routes/health', { force }),
+  llmRoutesApply: (routes) => request('POST', '/api/llm/routes/apply', { routes }),
+
+  components: () => request('GET', '/api/components'),
+  componentsCheck: (force = false) => request('POST', '/api/components/check', { force }),
+  componentSnapshot: (label = '') => request('POST', '/api/components/snapshot', { label }),
+  componentSnapshots: () => request('GET', '/api/components/snapshots'),
+  componentRollback: (name) => request('POST', '/api/components/rollback', { name }),
+  componentUpgrade: (key) => request('POST', '/api/components/upgrade', { key }),
+
+  plugins: (iid) => request('GET', `/api/plugins${iid ? `?iid=${encodeURIComponent(iid)}` : ''}`),
+  plugin: (id, iid) => request('GET', `/api/plugins/${encodeURIComponent(id)}${iid ? `?iid=${encodeURIComponent(iid)}` : ''}`),
+  pluginToggle: (id, enabled, iid) => request('PATCH', `/api/plugins/${encodeURIComponent(id)}`, { enabled, iid }),
+  pluginInstall: (payload) => request('POST', '/api/plugins/install', payload),
+  pluginRemove: (id, iid) => request('DELETE', `/api/plugins/${encodeURIComponent(id)}${iid ? `?iid=${encodeURIComponent(iid)}` : ''}`),
+  pluginConfig: (id, iid) => request('GET', `/api/plugins/${encodeURIComponent(id)}/config${iid ? `?iid=${encodeURIComponent(iid)}` : ''}`),
+  pluginConfigSave: (id, config, iid) => request('POST', `/api/plugins/${encodeURIComponent(id)}/config`, { config, iid }),
+  pluginLogs: (id, iid, lines = 300) => request('GET', `/api/plugins/${encodeURIComponent(id)}/logs?lines=${lines}${iid ? `&iid=${encodeURIComponent(iid)}` : ''}`),
+  pluginsFailed: (iid) => request('GET', `/api/plugins/failed${iid ? `?iid=${encodeURIComponent(iid)}` : ''}`),
+
+  metrics: (hours = 24, limit = 720) => request('GET', `/api/metrics?hours=${hours}&limit=${limit}`),
+  metricsSummary: () => request('GET', '/api/metrics/summary'),
+  metricsHistory: (hours = 1) => request('GET', `/api/metrics/history?hours=${hours}`),
+  metricsErrors: (limit = 30) => request('GET', `/api/metrics/errors?limit=${limit}`),
+  metricsExplain: (payload) => request('POST', '/api/metrics/explain', payload),
+  metricsClear: () => request('DELETE', '/api/metrics'),
+
+  selftestChat: (prompt, iid) => request('POST', '/api/selftest/chat', { prompt, iid }),
+  selftestE2E: (iid) => request('POST', '/api/selftest/e2e', { iid }),
+  selftestHistory: () => request('GET', '/api/selftest/history'),
+  selftestClear: () => request('DELETE', '/api/selftest/history'),
 
   openUrl: (url) => request('POST', '/api/open', { url }),
 

@@ -15,7 +15,10 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-PAGES = ["dashboard", "deploy", "model", "services", "logs", "login", "diag", "instances", "backups", "settings"]
+PAGES = [
+    "dashboard", "resources", "deploy", "model", "services", "logs",
+    "login", "diag", "addons", "instances", "backups", "settings",
+]
 #: 本机可用的浏览器：Playwright 的 msedge 通道只认用户级安装路径，
 #: 而 Windows 自带的 Edge 通常在 Program Files (x86)。这里挨个试，能开就行。
 EDGE_PATHS = [

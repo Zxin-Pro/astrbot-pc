@@ -16,8 +16,9 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs
 
-from . import (appearance, backup, config, console, creds, crash, deploy, doctor, envcheck,
-               instances, llm, logs, paths, probe, startup, stats, storage, update)
+from . import (appearance, backup, components, config, console, creds, crash, deploy, doctor,
+               envcheck, failover, instances, llm, logs, metrics, paths, plugins, probe,
+               selftest, startup, stats, storage, update)
 from .events import bus
 from .services import manager
 
@@ -108,13 +109,14 @@ def env_check(**_: Any) -> dict[str, Any]:
 def health(**_: Any) -> dict[str, Any]:
     ports: dict[str, bool] = {}
     try:
-        ports[str(_server_info().get("port", ""))] = True
-        for label, default in (
-            ("astrbot", paths.DEFAULT_PORTS["astrbot"]),
-            ("napcat", paths.DEFAULT_PORTS["napcat"]),
-            ("onebot", paths.DEFAULT_PORTS["onebot"]),
-        ):
-            port = int(config.get(f"services.{label}.port", default) or default)
+        UI_PORT = _server_info().get("port") or 0
+        if UI_PORT:
+            ports[str(UI_PORT)] = True
+        from . import runtime
+
+        sid = runtime.active_id() or "bot1"
+        for label in ("astrbot", "napcat", "onebot"):
+            port = runtime.port(sid, label)
             ports[str(port)] = bool(probe.tcp_open(port))
     except Exception:
         pass
@@ -134,20 +136,30 @@ def state(**_: Any) -> dict[str, Any]:
 
 # ---------------- 服务控制 ----------------
 
+@route("GET", r"/api/services/status")
+def service_status(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    iid = (query.get("iid") or [""])[0] or None
+    return {"ok": True, "services": manager.status(iid), "instances": manager.status_all()}
+
+
 @route("POST", r"/api/services/(?P<key>napcat|astrbot|all)/(?P<action>start|stop|restart)")
-def service_action(key: str, action: str, **_: Any) -> dict[str, Any]:
+def service_action(key: str, action: str, body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    iid = str(body.get("iid") or "").strip() or None
     if key == "all":
         if action == "stop":
-            return {"ok": True, "result": manager.stop_all()}
+            return {"ok": True, "result": manager.stop_all(iid)}
         if action == "start":
-            return {"ok": True, "result": manager.start_all()}
-        manager.stop_all()
+            return {"ok": True, "result": manager.start_all_instances() if not iid else manager.start_all(iid)}
+        manager.stop_all(iid)
         time.sleep(1)
-        return {"ok": True, "result": manager.start_all()}
+        return {
+            "ok": True,
+            "result": manager.start_all_instances() if not iid else manager.start_all(iid),
+        }
     fn = {"start": manager.start, "stop": manager.stop, "restart": manager.restart}[action]
-    res = fn(key)
+    res = fn(key, iid)
     manager.onepass()
-    return {"ok": bool(res.get("ok")), **res, "services": manager.status()}
+    return {"ok": bool(res.get("ok")), **res, "services": manager.status(iid)}
 
 
 # ---------------- 部署 ----------------
@@ -230,8 +242,12 @@ def inst_delete(iid: str, **_: Any) -> dict[str, Any]:
 # ---------------- 二维码 ----------------
 
 @route("GET", r"/api/qr")
-def qr(**_: Any) -> dict[str, Any]:
-    roots = [paths.STACK_DIR / "napcat", paths.STACK_DIR / "napcat" / "cache"]
+def qr(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    from . import runtime
+
+    iid = (query.get("iid") or [""])[0] or None
+    base = runtime.napcat_workdir(iid)
+    roots = [base, base / "cache", paths.STACK_DIR / "napcat", paths.STACK_DIR / "napcat" / "cache"]
     cands: list[Path] = []
     for r in roots:
         if not r.is_dir():
@@ -374,14 +390,18 @@ def open_target(body: dict[str, Any], **_: Any) -> dict[str, Any]:
         "backups": paths.BACKUP_DIR,
         "stack": paths.STACK_DIR,
     }
-    if target == "webui":
-        port = int(config.get("services.astrbot.port", paths.DEFAULT_PORTS["astrbot"]))
-        webbrowser.open(f"http://127.0.0.1:{port}")
-        return {"ok": True, "url": f"http://127.0.0.1:{port}"}
-    if target == "napcat":
-        port = int(config.get("services.napcat.port", paths.DEFAULT_PORTS["napcat"]))
-        webbrowser.open(f"http://127.0.0.1:{port}/webui/")
-        return {"ok": True, "url": f"http://127.0.0.1:{port}/webui/"}
+    if target in ("webui", "napcat"):
+        from . import runtime
+
+        sid = str(body.get("iid") or runtime.active_id() or "bot1")
+        if target == "webui":
+            port = runtime.port(sid, "astrbot")
+            url = f"http://127.0.0.1:{port}"
+        else:
+            port = runtime.port(sid, "napcat")
+            url = f"http://127.0.0.1:{port}/webui/"
+        webbrowser.open(url)
+        return {"ok": True, "url": url, "iid": sid}
     p = mapping.get(target)
     if not p:
         return {"ok": False, "err": "未知目标"}
@@ -657,3 +677,227 @@ def lan_info(**_: Any) -> dict[str, Any]:
         "needRestart": mode == "lan" and host in ("127.0.0.1", "localhost"),
         "note": "手机与电脑连同一个 Wi-Fi，就能用手机浏览器打开这个地址" if mode == "lan" else "只有本机能访问；在设置里打开「允许局域网访问」后重启程序即可",
     }
+
+
+# ---------------- 组件更新中心 ----------------
+
+@route("GET", r"/api/components")
+def components_inventory(**_: Any) -> dict[str, Any]:
+    return components.inventory()
+
+
+@route("POST", r"/api/components/check")
+def components_check(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return components.check(bool(body.get("force")))
+
+
+@route("POST", r"/api/components/snapshot")
+def components_snapshot(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return components.snapshot(str(body.get("label") or ""))
+
+
+@route("GET", r"/api/components/snapshots")
+def components_snapshots(**_: Any) -> dict[str, Any]:
+    return components.snapshots()
+
+
+@route("POST", r"/api/components/rollback")
+def components_rollback(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return components.rollback(str(body.get("name") or ""))
+
+
+@route("POST", r"/api/components/upgrade")
+def components_upgrade(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return components.upgrade(str(body.get("key") or ""))
+
+
+# ---------------- 插件管理器 ----------------
+
+@route("GET", r"/api/plugins/failed")
+def plugins_failed(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    return plugins.failed((query.get("iid") or [""])[0] or None)
+
+
+@route("GET", r"/api/plugins")
+def plugins_list(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    return plugins.list_all((query.get("iid") or [""])[0] or None)
+
+
+@route("POST", r"/api/plugins/install")
+def plugins_install(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    iid = str(body.get("iid") or "").strip() or None
+    url = str(body.get("url") or "").strip()
+    if url:
+        return plugins.install_github(url, iid)
+    path = str(body.get("path") or "").strip()
+    if path:
+        return plugins.install_zip(path, iid)
+    data_url = str(body.get("dataUrl") or "")
+    if data_url.startswith("data:") and ";base64," in data_url:
+        raw = data_url.split(";base64,", 1)[1]
+        try:
+            payload = base64.b64decode(raw)
+        except Exception:
+            return {"ok": False, "err": "插件包内容不是有效的 base64"}
+        paths.ensure_dirs()
+        tmp = paths.TMP_DIR / f"plugin-{int(time.time())}.zip"
+        tmp.write_bytes(payload)
+        try:
+            return plugins.install_zip(str(tmp), iid)
+        finally:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+    return {"ok": False, "err": "请提供插件 zip 路径、上传文件或 GitHub 链接"}
+
+
+@route("GET", r"/api/plugins/(?P<pid>[A-Za-z0-9_.-]+)")
+def plugins_detail(pid: str, query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    return plugins.detail(pid, (query.get("iid") or [""])[0] or None)
+
+
+@route("PATCH", r"/api/plugins/(?P<pid>[A-Za-z0-9_.-]+)")
+def plugins_enabled(pid: str, body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return plugins.set_enabled(pid, bool(body.get("enabled")), str(body.get("iid") or "").strip() or None)
+
+
+@route("DELETE", r"/api/plugins/(?P<pid>[A-Za-z0-9_.-]+)")
+def plugins_remove(pid: str, query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    return plugins.remove(pid, (query.get("iid") or [""])[0] or None)
+
+
+@route("GET", r"/api/plugins/(?P<pid>[A-Za-z0-9_.-]+)/config")
+def plugins_config_get(pid: str, query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    return plugins.config_get(pid, (query.get("iid") or [""])[0] or None)
+
+
+@route("POST", r"/api/plugins/(?P<pid>[A-Za-z0-9_.-]+)/config")
+def plugins_config_save(pid: str, body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return plugins.config_save(pid, body.get("config", body.get("data", {})), str(body.get("iid") or "").strip() or None)
+
+
+@route("GET", r"/api/plugins/(?P<pid>[A-Za-z0-9_.-]+)/logs")
+def plugins_logs(pid: str, query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    lines = int((query.get("lines") or ["300"])[0] or 300)
+    return plugins.logs(pid, (query.get("iid") or [""])[0] or None, lines)
+
+
+# ---------------- 模型多线路 ----------------
+
+@route("GET", r"/api/llm/routes")
+def llm_routes(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    iid = (query.get("iid") or [""])[0] or None
+    listed = failover.list_routes(iid)
+    if listed.get("ok"):
+        listed["current"] = failover.current(iid)
+    return listed
+
+
+@route("POST", r"/api/llm/routes")
+def llm_routes_save(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    iid = str(body.get("iid") or "").strip() or None
+    saved = failover.save_routes(body.get("routes") or [], iid)
+    if not saved.get("ok"):
+        return saved
+    if body.get("apply", True):
+        rows = config.get("llm.routes", []) or []
+        applied = llm.apply_routes(rows, iid)
+        saved["apply"] = applied
+        if not applied.get("ok"):
+            saved["ok"] = False
+            saved["err"] = applied.get("err") or "线路已保存，但写入 AstrBot 失败"
+    return saved
+
+
+@route("DELETE", r"/api/llm/routes/(?P<rid>[A-Za-z0-9_.-]+)")
+def llm_routes_remove(rid: str, query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    return failover.remove_route(rid, (query.get("iid") or [""])[0] or None)
+
+
+@route("POST", r"/api/llm/routes/health")
+def llm_routes_health(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    iid = str(body.get("iid") or "").strip() or None
+    return failover.health(iid, bool(body.get("force")))
+
+
+@route("POST", r"/api/llm/routes/apply")
+def llm_routes_apply(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    iid = str(body.get("iid") or "").strip() or None
+    return llm.apply_routes(body.get("routes") or config.get("llm.routes", []) or [], iid)
+
+
+@route("GET", r"/api/llm/routes/current")
+def llm_routes_current(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    return failover.current((query.get("iid") or [""])[0] or None)
+
+
+# ---------------- 资源看板与报错解释 ----------------
+
+@route("GET", r"/api/metrics")
+def metrics_samples(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    hours = float((query.get("hours") or ["24"])[0] or 24)
+    limit = int((query.get("limit") or ["720"])[0] or 720)
+    return metrics.samples(hours, limit)
+
+
+@route("GET", r"/api/metrics/summary")
+def metrics_summary(**_: Any) -> dict[str, Any]:
+    return metrics.summary()
+
+
+@route("GET", r"/api/metrics/history")
+def metrics_history(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    hours = float((query.get("hours") or ["1"])[0] or 1)
+    return {"ok": True, "items": metrics.history(hours)}
+
+
+@route("GET", r"/api/metrics/errors")
+def metrics_errors(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    limit = int((query.get("limit") or ["30"])[0] or 30)
+    return metrics.errors(limit)
+
+
+@route("POST", r"/api/metrics/explain")
+def metrics_explain(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    if body.get("path"):
+        return metrics.explain_log(str(body.get("path")), int(body.get("lineNo") or body.get("line") or 1))
+    return metrics.explain(str(body.get("text") or ""))
+
+
+@route("DELETE", r"/api/metrics")
+def metrics_clear(**_: Any) -> dict[str, Any]:
+    return metrics.clear()
+
+# ---------------- 试聊与端到端自检 ----------------
+
+@route("GET", r"/api/selftest/trial_chat")
+def selftest_trial(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    prompt = (query.get("prompt") or [""])[0]
+    return selftest.trial_chat(prompt, (query.get("iid") or [""])[0] or None)
+
+
+@route("GET", r"/api/selftest/e2e")
+def selftest_e2e(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    return selftest.e2e((query.get("iid") or [""])[0] or None)
+
+
+@route("GET", r"/api/selftest/history")
+def selftest_history(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    return selftest.history(int((query.get("limit") or ["20"])[0] or 20))
+
+
+@route("POST", r"/api/selftest/history/clear")
+@route("DELETE", r"/api/selftest/history")
+def selftest_history_clear(**_: Any) -> dict[str, Any]:
+    return selftest.clear_history()
+
+
+@route("POST", r"/api/selftest/chat")
+def selftest_chat(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return selftest.trial_chat(str(body.get("prompt") or ""), str(body.get("iid") or "").strip() or None)
+
+
+@route("POST", r"/api/selftest/e2e")
+def selftest_e2e_post(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return selftest.e2e(str(body.get("iid") or "").strip() or None)

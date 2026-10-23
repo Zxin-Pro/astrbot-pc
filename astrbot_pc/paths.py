@@ -13,7 +13,7 @@ from pathlib import Path
 APP_NAME = "AstrBotPC"
 APP_TITLE = "烛之控制台"
 APP_SUBTITLE = "AstrBot 烛版 · PC 端"
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.0.0"
 
 
 def is_frozen() -> bool:
@@ -67,6 +67,7 @@ STATE_DIR = ROOT / "state"
 LOG_DIR = ROOT / "logs"
 BACKUP_DIR = ROOT / "backups"
 STACK_DIR = ROOT / "stack"
+INSTANCES_DIR = ROOT / "instances"
 TMP_DIR = ROOT / "tmp"
 DIAG_DIR = ROOT / "diagnostics"
 
@@ -77,7 +78,7 @@ DEFAULT_PORTS = {
     "onebot": 6199,      # NapCat -> AstrBot 的反向 WebSocket
 }
 
-DIRS = (ROOT, STATE_DIR, LOG_DIR, BACKUP_DIR, STACK_DIR, TMP_DIR, DIAG_DIR)
+DIRS = (ROOT, STATE_DIR, LOG_DIR, BACKUP_DIR, STACK_DIR, INSTANCES_DIR, TMP_DIR, DIAG_DIR)
 
 
 def ensure_dirs() -> None:
