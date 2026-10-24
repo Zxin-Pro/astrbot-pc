@@ -31,6 +31,7 @@ STAGES: list[dict[str, str]] = [
     {"key": "env", "name": "环境检查", "desc": "确认 Python、磁盘空间与网络都就位"},
     {"key": "dirs", "name": "准备目录", "desc": "建立数据目录与 stack 工作区"},
     {"key": "napcat", "name": "获取 NapCat", "desc": "下载 NapCat 并解压到 stack/napcat"},
+    {"key": "snowluma", "name": "获取 SnowLuma", "desc": "下载 SnowLuma 并解压到 stack/snowluma（选它才装）"},
     {"key": "astrbot", "name": "获取 AstrBot", "desc": "下载源码包并解压到 stack/astrbot"},
     {"key": "deps", "name": "安装依赖", "desc": "建虚拟环境，装好 AstrBot 的 Python 依赖"},
     {"key": "config", "name": "写入配置", "desc": "接线 OneBot 反向 WS 与 WebUI 端口"},
@@ -67,7 +68,23 @@ def astrbot_sources() -> list[str]:
 
 
 def stages() -> list[dict[str, Any]]:
-    return [dict(s) for s in STAGES]
+    """步骤表。协议端只装一个，另一个标成跳过，名字也跟着当前实例走。"""
+    proto = runtime.protocol()
+    other = "SnowLuma" if proto == "napcat" else "NapCat"
+    out: list[dict[str, Any]] = []
+    for s in STAGES:
+        item = dict(s)
+        if s["key"] == proto:
+            item["skip"] = False
+        elif s["key"] in ("napcat", "snowluma"):
+            item["skip"] = True
+            item["desc"] = f"本次用 {proto.capitalize() if proto == 'napcat' else 'SnowLuma'}，跳过 {other}"
+        if s["key"] == "napcat-run":
+            item["name"] = "启动 SnowLuma" if proto == "snowluma" else "启动 NapCat"
+            item["desc"] = ("拉起 SnowLuma（自动拉 QQ）并等 WebUI" if proto == "snowluma"
+                            else "拉起 NapCat 并等二维码出现")
+        out.append(item)
+    return out
 
 
 # ---------- 离线资源 ----------
@@ -78,6 +95,11 @@ def stages() -> list[dict[str, Any]]:
 
 def local_napcat() -> Path | None:
     p = paths.RESOURCES_DIR / "napcat.zip"
+    return p if p.is_file() else None
+
+
+def local_snowluma() -> Path | None:
+    p = paths.RESOURCES_DIR / "snowluma.zip"
     return p if p.is_file() else None
 
 
@@ -109,6 +131,7 @@ def offline() -> dict[str, Any]:
     return {
         "dir": str(paths.RESOURCES_DIR),
         "napcat": has_napcat,
+        "snowluma": local_snowluma() is not None,
         "astrbot": has_astrbot,
         "wheels": count,
         "python": has_python,
@@ -149,9 +172,30 @@ class DeployRunner:
     # ---------- 查询 ----------
 
     def status(self) -> dict[str, Any]:
+        """pending 步的名字/说明/跳过标记每次都按当前协议端重算。
+
+        runner 初始化时只复制了一份裸 STAGES，而「本次用 SnowLuma，跳过 NapCat」
+        这类文案和 napcat-run 改叫「启动 SnowLuma」都只在 stages() 里算过；
+        用户切了协议端之后再打开部署页，必须看到新的那套名字。
+        """
+        try:
+            meta = {s["key"]: s for s in stages()}
+        except Exception:
+            meta = {}
         with self.lock:
             data = dict(self.state)
-            data["steps"] = [dict(s) for s in self.state["steps"]]
+            steps = []
+            for s in self.state["steps"]:
+                item = dict(s)
+                m = meta.get(item["key"]) or {}
+                if item.get("status") == "pending":
+                    for f in ("name", "desc"):
+                        if m.get(f):
+                            item[f] = m[f]
+                if m.get("skip") is not None:
+                    item["skip"] = bool(m["skip"])
+                steps.append(item)
+            data["steps"] = steps
             data["progress"] = dict(self.state["progress"])
         data["offline"] = offline()
         return data
@@ -245,6 +289,7 @@ class DeployRunner:
             ("env", self._stage_env),
             ("dirs", self._stage_dirs),
             ("napcat", self._stage_napcat),
+            ("snowluma", self._stage_snowluma),
             ("astrbot", self._stage_astrbot),
             ("deps", self._stage_deps),
             ("config", self._stage_config),
@@ -367,6 +412,8 @@ class DeployRunner:
         return zip_path, "下载", True
 
     def _stage_napcat(self, dry_run: bool) -> tuple[bool, str]:
+        if runtime.protocol() == "snowluma":
+            return True, "当前实例用 SnowLuma，跳过 NapCat"
         target = paths.STACK_DIR / "napcat"
         existing = _napcat_ready(target)
         if existing:
@@ -390,6 +437,30 @@ class DeployRunner:
             return False, "解压完了但没找到启动器，检查压缩包内容"
         size = download.dir_size(target) / 1024 / 1024
         return True, f"已就绪（{ready}，{size:.0f} MB，来自{source_txt}）"
+
+    def _stage_snowluma(self, dry_run: bool) -> tuple[bool, str]:
+        from . import snowluma
+
+        if runtime.protocol() != "snowluma":
+            return True, "当前实例用 NapCat，跳过 SnowLuma"
+        if snowluma.ready():
+            return True, f"已就绪：{snowluma.ready()}"
+        local = local_snowluma()
+        if dry_run:
+            return True, ("演练模式：解压离线包，不用联网" if local
+                          else "演练模式：跳过下载（约 41 MB）")
+
+        zip_path, source_txt, drop = self._acquire_zip(
+            local, snowluma.sources(), paths.TMP_DIR / "dl" / "snowluma.zip",
+            "snowluma", "SnowLuma")
+        self._progress("snowluma", 100, 100, f"正在解压{source_txt}…")
+        ok, detail = snowluma.install(
+            zip_path, lambda i, n: self._progress("snowluma", i, n, f"解压 {i}/{n}"))
+        if drop:
+            zip_path.unlink(missing_ok=True)
+        if not ok:
+            return False, detail
+        return True, detail
 
     def _stage_astrbot(self, dry_run: bool) -> tuple[bool, str]:
         target = paths.STACK_DIR / "astrbot"
@@ -526,32 +597,40 @@ class DeployRunner:
         written: list[str] = []
         runtime.ensure(sid)
 
-        # NapCat 运行时先找 onebot11_<QQ>.json，没有就回退读 onebot11.json 再另存。
-        # 部署时还不知道 QQ 号，所以写不带后缀的那份，登录后会自动复制过去。
-        cfg_dir = runtime.napcat_config(sid)
-        cfg_dir.mkdir(parents=True, exist_ok=True)
-        (cfg_dir / "onebot11.json").write_text(
-            json.dumps({
-                "network": {
-                    "websocketClients": [{
-                        "name": f"astrbot-{sid}",
-                        "enable": True,
-                        "url": f"ws://127.0.0.1:{ws_port}/ws",
-                        "messagePostFormat": "array",
-                        "reportSelfMessage": False,
-                        "token": token,
-                        "debug": False,
-                    }],
-                    "httpServers": [],
-                    "websocketServers": [],
-                },
-                "musicSignUrl": "",
-                "enableLocalFile2Url": False,
-                "parseMultMsg": False,
-            }, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        written.append(f"NapCat OneBot → {ws_port}")
+        if runtime.protocol(sid) == "snowluma":
+            # SnowLuma 的配置在实例自己的 cwd/config 下，两边字段名不一样，
+            # 交给 snowluma 模块统一写，免得这里和它各写一套。
+            from . import snowluma
+
+            res = snowluma.write_config(sid)
+            if not res.get("ok"):
+                return False, str(res.get("err") or "写 SnowLuma 配置失败")
+            written.append(f"SnowLuma OneBot → ws://127.0.0.1:{ws_port}/ws")
+        else:
+            cfg_dir = runtime.napcat_config(sid)
+            cfg_dir.mkdir(parents=True, exist_ok=True)
+            (cfg_dir / "onebot11.json").write_text(
+                json.dumps({
+                    "network": {
+                        "websocketClients": [{
+                            "name": f"astrbot-{sid}",
+                            "enable": True,
+                            "url": f"ws://127.0.0.1:{ws_port}/ws",
+                            "messagePostFormat": "array",
+                            "reportSelfMessage": False,
+                            "token": token,
+                            "debug": False,
+                        }],
+                        "httpServers": [],
+                        "websocketServers": [],
+                    },
+                    "musicSignUrl": "",
+                    "enableLocalFile2Url": False,
+                    "parseMultMsg": False,
+                }, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            written.append(f"NapCat OneBot → {ws_port}")
 
         # AstrBot 只认 data/cmd_config.json，写进 data/config/ 会被当作不存在
         data_dir = runtime.astrbot_data(sid)
@@ -583,8 +662,12 @@ class DeployRunner:
         return True, "；".join(written)
 
     def _stage_napcat_run(self, dry_run: bool) -> tuple[bool, str]:
+        proto = runtime.protocol()
+        label = "SnowLuma" if proto == "snowluma" else "NapCat"
         if dry_run:
-            return True, "演练模式：真机时这里会拉起 NapCat 并等二维码"
+            return True, (f"演练模式：真机时这里会拉起 {label} 并等 WebUI"
+                          if proto == "snowluma" else
+                          "演练模式：真机时这里会拉起 NapCat 并等二维码")
         from .services import manager
 
         sid = runtime.active_id() or "bot1"
@@ -593,7 +676,9 @@ class DeployRunner:
             return False, res.get("err", "启动失败")
         port = runtime.port(sid, "napcat")
         if not _wait(lambda: probe.tcp_open(port), 120):
-            return False, "120 秒内没等到 NapCat WebUI，检查日志"
+            return False, f"120 秒内没等到 {label} WebUI，检查日志"
+        if proto == "snowluma":
+            return True, f"SnowLuma 已就绪，WebUI 端口 {port}（登录请在 QQ 窗口扫码）"
         return True, f"NapCat 已就绪，WebUI 端口 {port}"
 
     def _stage_astrbot_run(self, dry_run: bool) -> tuple[bool, str]:

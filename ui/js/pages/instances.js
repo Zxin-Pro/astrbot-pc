@@ -67,6 +67,9 @@ export function mount(root, ctx) {
     const running = svc.napcat?.status === 'running' || svc.astrbot?.status === 'running';
     const online = Boolean(it.onebotOpen);
     const bad = conflictOf(it);
+    const proto = it.protocol === 'snowluma' ? 'snowluma' : 'napcat';
+    const protoName = proto === 'snowluma' ? 'SnowLuma' : 'NapCat';
+    const protoDesc = proto === 'snowluma' ? '挂在 QQ 上做 OneBot 转换' : '注入 QQ 后接管';
     return `
       <div class="card is-interactive instance" data-id="${esc(it.id)}">
         ${bad.length ? `<div class="notice notice--warn"><div class="notice__body"><strong>端口被占用</strong><p class="muted">${bad.map((c) => esc(c.detail || c.message || `${c.port} 已被 ${c.owner || '其他程序'} 占用`)).join('；')}</p></div></div>` : ''}
@@ -88,7 +91,8 @@ export function mount(root, ctx) {
         </div>
         <dl class="kv">
           <div class="kv__row"><dt>OneBot 端口</dt><dd class="mono">${esc(String(it.port || 6199))}${online ? '<i class="dot dot--ok" title="端口已监听"></i>' : ''}</dd></div>
-          <div class="kv__row"><dt>NapCat WebUI</dt><dd class="mono">${esc(String(it.napcatPort || 6099))}</dd></div>
+          <div class="kv__row"><dt>协议端</dt><dd><span class="pill ${proto === 'snowluma' ? 'pill--brand' : ''}">${esc(protoName)}</span> <span class="muted" style="font-size:11.5px">${esc(protoDesc)}</span></dd></div>
+          <div class="kv__row"><dt>协议端 WebUI</dt><dd class="mono">${esc(String(it.napcatPort || 6099))}</dd></div>
           <div class="kv__row"><dt>AstrBot Dashboard</dt><dd class="mono">${esc(String(it.astrbotPort || 6185))}</dd></div>
           <div class="kv__row"><dt>访问令牌</dt><dd class="mono">${it.token ? '已设置' : '<span class="muted">空</span>'}</dd></div>
           <div class="kv__row"><dt>创建时间</dt><dd>${fdate(it.createdAt)}</dd></div>
@@ -133,6 +137,14 @@ export function mount(root, ctx) {
           <button class="btn btn--sm" type="button" data-act="auto-port">${icon('bolt', 14)}自动挑空闲端口</button>
           <span class="field__help" data-port-note>保存后再点一次「一键接线」，新端口才会写进 AstrBot / NapCat。</span>
         </div>
+        <label class="field">
+          <span class="field__label">协议端</span>
+          <select class="input" name="protocol">
+            <option value="napcat"${v.protocol === 'snowluma' ? '' : ' selected'}>NapCat（默认）</option>
+            <option value="snowluma"${v.protocol === 'snowluma' ? ' selected' : ''}>SnowLuma</option>
+          </select>
+          <span class="field__help">两者二选一：NapCat 更成熟，SnowLuma 直接挂在已登录的 QQ 上，扫码在 QQ 窗口里。</span>
+        </label>
         <label class="field">
           <span class="field__label">访问令牌</span>
           <input class="input mono" name="token" value="${esc(v.token || '')}" placeholder="留空则不校验" />
@@ -207,6 +219,7 @@ export function mount(root, ctx) {
       napcatPort: Number(get('napcatPort').value) || 6099,
       astrbotPort: Number(get('astrbotPort').value) || 6185,
       token: get('token').value.trim(),
+      protocol: get('protocol') ? get('protocol').value : 'napcat',
       enabled: get('enabled').checked,
     };
   }
@@ -259,6 +272,14 @@ export function mount(root, ctx) {
       render();
     } else if (act === 'start-inst' && it) {
       btn.disabled = true;
+      if (it.protocol === 'snowluma') {
+        const info = await api.snowluma(it.id).catch(() => null);
+        if (info && !info.installed) {
+          btn.disabled = false;
+          notify.error('SnowLuma 还没装好，先去「扩展 · 组件更新」装一下');
+          return;
+        }
+      }
       const res = await api.service('all', 'start', it.id);
       btn.disabled = false;
       if (!res.ok) notify.error(res.err || '启动失败');

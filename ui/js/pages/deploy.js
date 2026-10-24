@@ -10,6 +10,7 @@ const STEP_ICONS = {
   env: 'shieldCheck',
   dirs: 'folder',
   napcat: 'route',
+  snowluma: 'route',
   astrbot: 'bolt',
   deps: 'database',
   config: 'settings',
@@ -18,6 +19,10 @@ const STEP_ICONS = {
 };
 
 export function mount(root, ctx) {
+  // 一个实例只能选一个协议端：页面上所有「NapCat」字样都要跟着当前实例走。
+  const curInst = () => (ctx.store.instances || []).find((x) => x.active) || (ctx.store.instances || [])[0] || {};
+  const proto = () => (curInst().protocol === 'snowluma' ? 'snowluma' : 'napcat');
+  const pname = () => (proto() === 'snowluma' ? 'SnowLuma' : 'NapCat');
   let lastStatus = '';
   // 部署跑完后 store.env 还是进页面时那份旧快照，右侧体检会一直显示「缺失」。
   // 记住最后处理过的 finishedAt，保证每次部署结束只重新体检一次。
@@ -27,7 +32,7 @@ export function mount(root, ctx) {
     <div class="page">
       ${pageHead({
         title: '部署',
-        desc: '把 NapCat 和 AstrBot 装到这台电脑上，并接好线。',
+        desc: `把 ${pname()} 和 AstrBot 装到这台电脑上，并接好线。`,
         actions: `
           <button class="btn" data-act="env">${icon('refresh', 15)}重新体检</button>
           <button class="btn btn--primary" data-act="start">${icon('rocket', 15)}开始部署</button>`,
@@ -37,7 +42,7 @@ export function mount(root, ctx) {
         ${icon('info', 17)}
         <div class="grow">
           <strong>演练模式</strong>　走完整流程但不真的下载安装，用来确认每一步都通。
-          <span id="dry-banner-note">关掉后才会联网拉取 NapCat 与 AstrBot。</span>
+          <span id="dry-banner-note">关掉后才会联网拉取 ${pname()} 与 AstrBot。</span>
         </div>
         <label class="switch">
           <input type="checkbox" id="dry-toggle">
@@ -84,7 +89,7 @@ export function mount(root, ctx) {
             <div class="card">
               <div class="card-head"><h3>装好之后</h3></div>
               <ol class="stack" style="font-size:13px;color:var(--ink-2);padding-left:2px">
-                <li class="inline"><span class="step__idx" style="width:20px;height:20px;font-size:11px">1</span> 打开「登录」把手机 QQ 扫上去</li>
+                <li class="inline"><span class="step__idx" style="width:20px;height:20px;font-size:11px">1</span> ${proto() === 'snowluma' ? '让 QQ 窗口登录，扫码就在 QQ 里完成' : '打开「登录」把手机 QQ 扫上去'}</li>
                 <li class="inline"><span class="step__idx" style="width:20px;height:20px;font-size:11px">2</span> 在「服务」里确认两个进程都是运行中</li>
                 <li class="inline"><span class="step__idx" style="width:20px;height:20px;font-size:11px">3</span> 去 AstrBot 控制台填模型 API Key</li>
               </ol>
@@ -115,11 +120,13 @@ export function mount(root, ctx) {
     if (!off) return '';
     const have = [];
     if (off.napcat) have.push('NapCat');
+    if (off.snowluma) have.push('SnowLuma');
     if (off.astrbot) have.push('AstrBot');
     if (off.wheels) have.push(`${off.wheels} 个依赖包`);
     if (off.python) have.push('便携 Python');
     const missing = [];
     if (!off.napcat) missing.push('NapCat');
+    if (proto() === 'snowluma' && !off.snowluma) missing.push('SnowLuma');
     if (!off.astrbot) missing.push('AstrBot 源码');
     if (!off.wheels) missing.push('依赖包');
     const lazy = !!off.lazy;
@@ -133,7 +140,7 @@ export function mount(root, ctx) {
         ? `离线包齐全（${have.join(' + ')}），部署时一步都不用联网`
         : have.length
           ? `有 ${have.join(' + ')}，还缺 ${missing.join('、') || '便携 Python'}，这几步会走网络`
-          : '这是联网安装包：部署时从 GitHub 拉 NapCat 与 AstrBot 源码，再用 pip 装依赖';
+          : `这是联网安装包：部署时从 GitHub 拉 ${pname()} 与 AstrBot 源码，再用 pip 装依赖`;
     return `
       <div class="list__row">
         <span class="pill ${cls}">${label}</span>
@@ -155,7 +162,7 @@ export function mount(root, ctx) {
     } else if (off && off.sources) {
       note.textContent = '关掉后源码从离线包解压，只有装依赖那步要联网。';
     } else {
-      note.textContent = '关掉后才会联网拉取 NapCat 与 AstrBot。';
+      note.textContent = `关掉后才会联网拉取 ${pname()} 与 AstrBot。`;
     }
   }
 
@@ -208,7 +215,7 @@ export function mount(root, ctx) {
         <div class="step ${status === 'pending' ? '' : 'is-' + status}" data-key="${esc(st.key)}">
           <span class="step__idx">${mutating ? '<span class="spinner"></span>' : status === 'done' ? icon('check', 13, 2.2) : status === 'failed' ? icon('x', 13, 2.2) : i + 1}</span>
           <div class="step__body">
-            <strong>${esc(st.name)}${status === 'skipped' ? ' <span class="tag">已跳过</span>' : ''}</strong>
+            <strong>${esc(st.name)}${status === 'skipped' || (st.skip && status === 'pending') ? ' <span class="tag">已跳过</span>' : ''}</strong>
             <p title="${esc(st.detail || st.desc || '')}">${esc(st.detail || st.desc || '')}</p>
           </div>
           <span class="step__meta">${st.ms ? (st.ms / 1000).toFixed(1) + 's' : ''}</span>

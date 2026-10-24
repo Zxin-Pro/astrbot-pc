@@ -230,3 +230,13 @@ pythonnet 3.x 靠 `clr_loader` + `cffi` 去找 `Python.Runtime.dll`；这两个�
 - **`WS_EX_LAYERED` 是可以用在运行中的 WebView2 窗口上的**：加 `SetLayeredWindowAttributes` 调 alpha，内容正常渲染，不白屏。淡入前先把 alpha 压到 42 再让窗口显示，淡出后在窗口已经缩下去之后再摘样式，顺序反了会看到一次跳亮。
 - **最大化盖住任务栏**：无边框窗口最大化时 rect 是整屏（含任务栏）。子类化 `WM_GETMINMAXINFO`，在**调用默认过程之后**改 `ptMaxPosition/ptMaxSize`（先改会被默认过程覆盖），按 `MonitorFromWindow` + `GetMonitorInfoW` 的工作区算。
 - **最小化别直接用 Win32 `ShowWindow`**：绕过 WinForms 的 `WindowState` 逻辑，WebView2 的合成表面不知道窗口被藏起来了，还原时只剩一块白。走 `window.minimize()/maximize()/restore()`，样式位负责让系统动画与任务栏按钮成立。
+
+
+## SnowLuma 与 NapCat 并存（1.0.2）
+
+- **SnowLuma 的数据目录 = 进程 cwd**，这一点和 NapCat 的 `NAPCAT_WORKDIR` 不一样。给它每个实例一个独立 cwd（`instances/<id>/snowluma`），`config/runtime.json`、`config/onebot.json`、`logs/` 就自然分开了；两个实例同时开也不会抢 `onebot11.json`。
+- **`index.mjs` 必须用绝对路径启动**：cwd 切到实例目录后再传相对的 `index.mjs`，Node 会去 `<实例目录>/index.mjs` 找，报 `Cannot find module ...\work\index.mjs`。
+- **端口别用默认值**：SnowLuma 默认 WebUI 5099、OneBot HTTP 3000、WS 3001，多开必撞。用 `SNOWLUMA_WEBUI_PORT` 指到实例的「协议端 WebUI」端口，OneBot 的 HTTP/WS 服务全关掉（我们的 AstrBot 只认反向 WS），配置里只留一条 `wsClients` 反连 `ws://127.0.0.1:<onebot>/ws`。
+- **它自己会拉 QQ**：`hookAutoLoad` 默认开，进程起来会去找 `QQ.exe` 注入。测试时把 `SNOWLUMA_HOOK_AUTOLOAD=0` 打开，只验「进程能起、WebUI 能听、配置读对」，别去注入用户正在用的 QQ。
+- **登录只在 QQ 窗口里**：SnowLuma 不落二维码文件，`/api/QQLogin/GetQQLoginQrcode` 给的是一串链接。所以登录页在 SnowLuma 下要换文案——给「拉起 QQ」按钮，告诉用户扫码在 QQ 里完成；别让用户对着空的二维码区等。
+- **协议端切换要刷新部署步骤**：`deploy.status()["steps"]` 是 runner 初始化时从裸 `STAGES` 复制的，不带 `skip`、也不会改名；而 `stages()` 才按当前协议端算「跳过 NapCat」「启动 SnowLuma」。`status()` 每次返回前用 `stages()` 把 pending 步的 name/desc/skip 重算一遍，界面才不会显示切之前的旧步骤。

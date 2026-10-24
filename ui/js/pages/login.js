@@ -1,4 +1,4 @@
-/** 登录：扫码上线。二维码是从 NapCat 落盘的文件里读的，不碰手机。 */
+/** 登录：扫码上线。二维码是从协议端落盘的文件里读的，不碰手机。SnowLuma 不落二维码，只能去 QQ 窗口扫。 */
 
 import { api } from '../api.js';
 import { notify } from '../components.js';
@@ -6,14 +6,21 @@ import { icon } from '../icons.js';
 import { esc, timeAgo, sleep } from '../util.js';
 import { pageHead } from './common.js';
 
-const TIPS = [
+const TIPS_NAPCAT = [
   { t: '用手机 QQ 扫上面这个码', d: '扫完在手机上点确认登录，电脑这边会自己接上。' },
   { t: '等十秒左右', d: 'NapCat 登录成功后，「服务」里的两个进程都会变成运行中。' },
   { t: '去控制台配模型', d: '第一次用需要填一个模型 API Key，之后就能聊天了。' },
 ];
 
+const TIPS_SNOWLUMA = [
+  { t: '先让 QQ 窗口出来', d: 'SnowLuma 挂在真正的 QQ 上，本页不会出现二维码。' },
+  { t: '在 QQ 窗口里扫码', d: '登录成功后 SnowLuma 自动接管，OneBot 事件从那一刻开始转发。' },
+  { t: '去控制台配模型', d: '第一次用需要填一个模型 API Key，之后就能聊天了。' },
+];
+
 export function mount(root, ctx) {
   const state = { dataUrl: '', mtime: 0, stale: false, path: '', polling: false, timer: 0, ticker: 0 };
+  let proto = 'napcat';
 
   root.innerHTML = `
     <div class="page">
@@ -29,8 +36,8 @@ export function mount(root, ctx) {
             <div class="qr-skeleton skeleton" id="qr-skel" hidden></div>
             <div class="qr-placeholder" id="qr-ph">
               ${icon('qrcode', 44)}
-              <strong>还没有二维码</strong>
-              <p>先在「服务」里启动 NapCat，二维码生成后会自动出现在这里。</p>
+              <strong id="qr-ph-title">还没有二维码</strong>
+              <p id="qr-ph-desc">先在「服务」里启动 NapCat，二维码生成后会自动出现在这里。</p>
             </div>
             <img id="qr-img" alt="QQ 登录二维码" hidden />
             <div class="qr-stale" id="qr-stale" hidden>
@@ -42,6 +49,7 @@ export function mount(root, ctx) {
           <div class="qr-actions">
             <button class="btn btn--primary btn--lg" data-act="refresh" id="qr-refresh">${icon('refresh', 16)}换一张</button>
             <button class="btn btn--lg" data-act="save" id="qr-save" disabled>${icon('download', 16)}保存图片</button>
+            <button class="btn btn--primary btn--lg" data-act="open-qq" id="qr-qq" hidden>${icon('play', 16)}拉起 QQ</button>
           </div>
           <div class="qr-meta">
             <span class="inline">
@@ -55,8 +63,8 @@ export function mount(root, ctx) {
         <div class="stack">
           <div class="card">
             <div class="card-head"><h3>三步上线</h3></div>
-            <div class="stack" style="gap:14px">
-              ${TIPS.map((s, i) => `
+            <div class="stack" style="gap:14px" id="tip-list">
+              ${(proto === 'snowluma' ? TIPS_SNOWLUMA : TIPS_NAPCAT).map((s, i) => `
                 <div class="tip-row">
                   <span class="step__idx" style="width:24px;height:24px">${i + 1}</span>
                   <div>
@@ -78,22 +86,73 @@ export function mount(root, ctx) {
 
           <div class="card">
             <div class="card-head">
-              <h3>扫码登录不上？</h3>
+              <h3 id="help-title">扫码登录不上？</h3>
               <button class="btn btn--sm btn--ghost" data-act="to-logs">看日志${icon('chevron', 13)}</button>
             </div>
-            <ul class="check-list">
+            <ul class="check-list" id="help-list">
               <li><span class="check-list__i">${icon('check', 12)}</span>NapCat 是否在「服务」里显示运行中</li>
               <li><span class="check-list__i">${icon('check', 12)}</span>换一个手机 QQ 号试试，风控的号扫不出来</li>
               <li><span class="check-list__i">${icon('check', 12)}</span>电脑时间是否准确，偏差大会导致签名失败</li>
               <li><span class="check-list__i">${icon('check', 12)}</span>改用「文件传码」：把码导到手机相册再扫</li>
             </ul>
             <div class="inline" style="margin-top:14px">
-              <button class="btn btn--block" data-act="restart-napcat">${icon('refresh', 15)}重启 NapCat 再试</button>
+              <button class="btn btn--block" data-act="restart-napcat" id="help-restart">${icon('refresh', 15)}重启 NapCat 再试</button>
             </div>
           </div>
         </div>
       </div>
     </div>`;
+
+  const tipList = root.querySelector('#tip-list');
+  const phTitle = root.querySelector('#qr-ph-title');
+  const phDesc = root.querySelector('#qr-ph-desc');
+
+  function paintTips() {
+    if (!tipList) return;
+    const tips = proto === 'snowluma' ? TIPS_SNOWLUMA : TIPS_NAPCAT;
+    tipList.innerHTML = tips.map((s, i) => `
+      <div class="tip-row">
+        <span class="step__idx" style="width:24px;height:24px">${i + 1}</span>
+        <div>
+          <strong>${esc(s.t)}</strong>
+          <p class="muted" style="font-size:12.5px;margin-top:2px">${esc(s.d)}</p>
+        </div>
+      </div>`).join('');
+  }
+
+  function paintHelp() {
+    const title = root.querySelector('#help-title');
+    const list = root.querySelector('#help-list');
+    const restart = root.querySelector('#help-restart');
+    if (proto !== 'snowluma') return;
+    if (title) title.textContent = 'QQ 那边登不上？';
+    if (list) {
+      list.innerHTML = [
+        'QQ 自己能正常登录吗？先在 QQ 窗口里手动登一次',
+        '「服务」里 SnowLuma 是否在运行中，WebUI 端口通不通',
+        '挂的号是不是新号或被风控，换一个常用号试试',
+        'SnowLuma 需要和 QQ 同一个 Windows 用户、同一权限',
+      ].map((d) => `<li><span class="check-list__i">${icon('check', 12)}</span>${esc(d)}</li>`).join('');
+    }
+    if (restart) restart.innerHTML = `${icon('refresh', 15)}重启 SnowLuma 再试`;
+  }
+
+  async function loadProtocol() {
+    const res = await api.protocol().catch(() => null);
+    if (!res?.active) return;
+    proto = res.active;
+    paintTips();
+    if (proto === 'snowluma') {
+      if (phTitle) phTitle.textContent = 'SnowLuma 不用这里的二维码';
+      if (phDesc) phDesc.textContent = '登录在 QQ 窗口里完成：点「拉起 QQ」，扫码后回到这里看服务状态。';
+      liveText.textContent = 'SnowLuma 登录在 QQ 窗口';
+      root.querySelector('#qr-refresh')?.setAttribute('hidden', '');
+      root.querySelector('#qr-save')?.setAttribute('hidden', '');
+      root.querySelector('#qr-qq')?.removeAttribute('hidden');
+      stopLoop();
+      paintHelp();
+    }
+  }
 
   const stage = root.querySelector('#qr-stage');
   const img = root.querySelector('#qr-img');
@@ -168,11 +227,13 @@ export function mount(root, ctx) {
     liveText.textContent = '已暂停检查';
   }
 
+  loadProtocol();
+
   fetchQr().then((res) => {
     if (res && res.exists) {
       liveDot.classList.add('is-live');
       loop();
-    } else {
+    } else if (proto !== 'snowluma') {
       liveText.textContent = '启动 NapCat 后自动出现';
       loop();
     }
@@ -208,8 +269,15 @@ export function mount(root, ctx) {
       btn.disabled = true;
       const res = await api.service('napcat', 'restart');
       btn.disabled = false;
-      if (res.ok) notify.ok('NapCat 正在重启，稍等片刻');
+      const name = proto === 'snowluma' ? 'SnowLuma' : 'NapCat';
+      if (res.ok) notify.ok(`${name} 正在重启，稍等片刻`);
       else notify.error(res.err || '重启失败');
+    } else if (act === 'open-qq') {
+      btn.disabled = true;
+      const res = await api.snowlumaQQ();
+      btn.disabled = false;
+      if (!res.ok) notify.error(res.err || '没能拉起 QQ');
+      else notify.ok('QQ 已拉起，登录后在「服务」里确认状态');
     }
   });
 

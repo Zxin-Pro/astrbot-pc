@@ -88,6 +88,22 @@ def napcat_config(iid: str | None = None) -> Path:
     return napcat_workdir(iid) / "config"
 
 
+def snowluma_dir(iid: str | None = None) -> Path:
+    """SnowLuma 的数据根（它的 cwd）：config/、logs/ 都在下面。"""
+    return instance_dir(iid) / "snowluma"
+
+
+def snowluma_config(iid: str | None = None) -> Path:
+    return snowluma_dir(iid) / "config"
+
+
+def protocol(iid: str | None = None) -> str:
+    """这个实例用哪个协议端：napcat（默认）或 snowluma。"""
+    inst = get(iid) or {}
+    val = str(inst.get("protocol") or "napcat").strip().lower()
+    return val if val in ("napcat", "snowluma") else "napcat"
+
+
 def log_path(iid: str | None, role: str) -> Path:
     return paths.LOG_DIR / f"{role}-{_safe(iid)}.log"
 
@@ -137,6 +153,9 @@ def spec(iid: str | None = None) -> dict[str, Any]:
         "napcatRoot": str(napcat_workdir(sid)),
         "astrbotUrl": f"http://127.0.0.1:{port(sid, 'astrbot')}",
         "napcatUrl": f"http://127.0.0.1:{port(sid, 'napcat')}",
+        "protocol": protocol(sid),
+        "protocolName": "SnowLuma" if protocol(sid) == "snowluma" else "NapCat",
+        "snowlumaRoot": str(snowluma_dir(sid)),
     }
 
 

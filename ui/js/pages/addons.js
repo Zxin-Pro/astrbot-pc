@@ -29,6 +29,10 @@ export function mount(root, ctx) {
     snapErr: '',
     plugins: null,
     plugErr: '',
+    proto: null,
+    protoErr: '',
+    installing: false,
+    installJob: null,
   };
 
   // 插件接口按实例分区；没显式指定时后端会退回当前实例（再不行是 bot1）
@@ -57,6 +61,14 @@ export function mount(root, ctx) {
             </div>
           </div>
           <div class="card card--flush" id="components-card"><p class="hint" style="padding:16px">正在读取组件清单…</p></div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h2>协议端 <span class="muted">NapCat / SnowLuma 二选一</span></h2>
+            <span class="hint" id="proto-meta"></span>
+          </div>
+          <div class="card card--tight" id="protocol-card"><p class="hint">正在读取协议端…</p></div>
         </div>
 
         <div class="section">
@@ -186,6 +198,108 @@ export function mount(root, ctx) {
         </table>
       </div>
       <p class="field__help" style="padding:10px 14px;margin:0;border-top:1px solid var(--line-2)">${esc(meta)}</p>`;
+  }
+
+  /* ------------------------------ 协议端 ------------------------------ */
+
+  function renderProtocol() {
+    const el = root.querySelector('#protocol-card');
+    if (!el) return;
+    if (state.protoErr) {
+      el.innerHTML = `<p class="hint">读不到协议端信息：${esc(state.protoErr)}</p>`;
+      return;
+    }
+    if (!state.proto) {
+      el.innerHTML = '<p class="hint">正在读取协议端…</p>';
+      return;
+    }
+    const items = state.proto.items || [];
+    const job = state.installJob || state.proto.install || {};
+    const meta = root.querySelector('#proto-meta');
+    if (meta) {
+      meta.textContent = `当前实例用 ${state.proto.active === 'snowluma' ? 'SnowLuma' : 'NapCat'}`;
+    }
+    const rows = items.map((it) => {
+      const active = (state.proto.active || 'napcat') === it.key;
+      const ver = it.version ? `v${esc(it.version)}` : '';
+      const latest = it.latest && it.newer ? `<span class="pill pill--warm">新版 v${esc(it.latest)}</span>` : '';
+      let action = '';
+      if (it.key === 'snowluma') {
+        if (state.installing) {
+          const pct = job.total ? Math.round((job.received / job.total) * 100) : 0;
+          action = `<span class="pill">${job.total ? `${pct}% · ${bytes(job.received)} / ${bytes(job.total)}` : esc(job.message || '安装中…')}</span>`;
+        } else {
+          action = `<button class="btn btn--sm ${it.installed ? '' : 'btn--primary'}" type="button" data-act="snow-install">${icon('download', 13)}${it.installed ? '重新安装' : '安装 SnowLuma'}</button>`;
+        }
+      }
+      return `<tr>
+        <td><strong>${esc(it.name)}</strong> ${active ? '<span class="pill pill--brand">当前</span>' : ''}${it.installed ? '' : '<span class="pill pill--warn">未安装</span>'}
+          <div class="muted" style="font-size:11.5px">${esc(it.desc || '')}</div></td>
+        <td class="mono">${it.installed ? (ver || '<span class="muted">已安装</span>') : '<span class="muted">—</span>'} ${latest}</td>
+        <td class="right"><div class="inline" style="justify-content:flex-end">${action}</div></td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div style="overflow-x:auto">
+        <table class="table">
+          <thead><tr><th>协议端</th><th>版本</th><th class="right">操作</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <p class="field__help" style="padding:10px 14px;margin:0;border-top:1px solid var(--line-2)">
+        装好之后到「实例」页把某个实例的协议端切过去。SnowLuma 会自动拉起 QQ，扫码登录在 QQ 窗口里；NapCat 的二维码在登录页看。
+      </p>`;
+  }
+
+  async function loadProtocol() {
+    try {
+      const res = await api.protocol();
+      if (!res.ok) {
+        state.protoErr = res.err || '原因未知';
+        state.proto = null;
+        renderProtocol();
+        return;
+      }
+      state.protoErr = '';
+      state.proto = res;
+      state.installing = Boolean(res.install?.running);
+      if (state.installing) pollInstall();
+      renderProtocol();
+    } catch (err) {
+      state.protoErr = err?.message || String(err);
+      state.proto = null;
+      renderProtocol();
+    }
+  }
+
+  async function pollInstall() {
+    if (!state.installing) return;
+    const res = await api.snowlumaInstallJob().catch(() => null);
+    if (!res?.ok) return;
+    state.installJob = res.job;
+    if (!res.job.running) {
+      state.installing = false;
+      renderProtocol();
+      await loadProtocol();
+      if (res.job.ok) notify.ok(`SnowLuma 装好了：${res.job.message || ''}`);
+      else notify.error(res.job.message || '安装失败');
+      return;
+    }
+    renderProtocol();
+    setTimeout(pollInstall, 1200);
+  }
+
+  async function installSnow(btn) {
+    await withBusy(btn, async () => {
+      const res = await api.snowlumaInstall(true);
+      if (!res.ok) return notify.error(res.err || '安装没启动');
+      state.installing = true;
+      state.installJob = res.job || null;
+      renderProtocol();
+      notify.info('开始下载 SnowLuma（约 41 MB），下载完会自动解压');
+      pollInstall();
+    });
   }
 
   function renderSnapshots() {
@@ -607,6 +721,7 @@ export function mount(root, ctx) {
     const id = btn.dataset.id;
 
     if (act === 'check') return doCheck(btn);
+    if (act === 'snow-install') return installSnow(btn);
     if (act === 'snapshot-open') return openSnapshotModal();
     if (act === 'upgrade') return upgrade(btn);
     if (act === 'release') return openRelease(btn);
@@ -684,12 +799,14 @@ export function mount(root, ctx) {
   loadSnapshots();
   loadPlugins();
   loadCheckSilent();
+  loadProtocol();
 
   return {
     update(store, reason) {
       if (reason === 'instances') {
         loadInventory();
         loadPlugins();
+        loadProtocol();
       }
     },
   };

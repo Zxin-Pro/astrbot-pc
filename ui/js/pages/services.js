@@ -24,6 +24,27 @@ const META = {
 
 export function mount(root, ctx) {
   let busy = false;
+  let proto = 'napcat';
+
+  /** 第一位那张卡其实是「协议端」：NapCat 和 SnowLuma 二选一。 */
+  function meta(key) {
+    if (key !== 'napcat') return META[key];
+    const snow = proto === 'snowluma';
+    return {
+      icon: 'route',
+      title: snow ? 'SnowLuma' : 'NapCat',
+      sub: snow
+        ? '挂在已登录的 QQ 上做 OneBot 转换，扫码在 QQ 窗口里。'
+        : 'QQ 协议适配层，负责和手机 QQ 保持一条长连接。',
+      webui: snow ? 'SnowLuma WebUI' : 'NapCat WebUI',
+    };
+  }
+
+  async function loadProtocol() {
+    const res = await api.protocol().catch(() => null);
+    if (res?.active) proto = res.active;
+    render();
+  }
 
   root.innerHTML = `
     <div class="page">
@@ -65,7 +86,7 @@ export function mount(root, ctx) {
           </button>
           <button class="card card--tight is-interactive tile-btn" data-act="open-napcat">
             <span class="tile-btn__ico">${icon('route', 18)}</span>
-            <span><strong>NapCat WebUI</strong><small>查看账号与消息统计</small></span>
+            <span><strong>协议端 WebUI</strong><small>查看账号与消息统计</small></span>
           </button>
           <button class="card card--tight is-interactive tile-btn" data-act="rewire">
             <span class="tile-btn__ico">${icon('route', 18)}</span>
@@ -117,7 +138,7 @@ export function mount(root, ctx) {
     const svc = ctx.store.services || {};
     grid.innerHTML = Object.keys(META).map((key) => {
       const it = svc[key] || {};
-      const m = META[key];
+      const m = meta(key);
       const res = it.resources || {};
       const running = it.status === 'running';
       const cpu = Number(res.cpu || 0);
@@ -152,6 +173,7 @@ export function mount(root, ctx) {
               ? `<button class="btn" data-svc="${key}" data-act="restart">${icon('refresh', 15)}重启</button>
                  <button class="btn btn--danger" data-svc="${key}" data-act="stop">${icon('stop', 15)}停止</button>`
               : `<button class="btn btn--primary" data-svc="${key}" data-act="start">${icon('play', 15)}启动</button>`}
+            ${key === 'napcat' && proto === 'snowluma' ? '<button class="btn btn--ghost" data-act="open-qq">' + icon('play', 15) + '拉起 QQ</button>' : ''}
             <button class="btn btn--ghost" data-open="${key === 'napcat' ? 'napcat' : 'webui'}">
               ${icon('external', 15)}${esc(m.webui)}
             </button>
@@ -172,7 +194,7 @@ export function mount(root, ctx) {
     const ports = [
       { name: 'OneBot 反向 WS', host: '127.0.0.1', port: 6199, key: 'onebot' },
       { name: 'AstrBot 控制台', host: '127.0.0.1', port: svc.astrbot?.port || 6185, key: 'astrbot' },
-      { name: 'NapCat WebUI', host: '127.0.0.1', port: svc.napcat?.port || 6099, key: 'napcat' },
+      { name: proto === 'snowluma' ? 'SnowLuma WebUI' : 'NapCat WebUI', host: '127.0.0.1', port: svc.napcat?.port || 6099, key: 'napcat' },
       { name: '本界面 API', host: ctx.store.server?.host || '127.0.0.1', port: ctx.store.server?.port || 17650, key: 'api' },
     ];
     const probe = ctx.store.ports || {};
@@ -192,6 +214,7 @@ export function mount(root, ctx) {
 
   render();
   loadCreds();
+  loadProtocol();
 
   function resetPassModal() {
     const gen = () => {
@@ -253,7 +276,7 @@ export function mount(root, ctx) {
     busy = false;
     document.body.style.cursor = '';
     const label = { start: '启动', stop: '停止', restart: '重启' }[action];
-    if (res.ok) notify.ok(`${key === 'all' ? '全部服务' : META[key].title}：${label}指令已执行`);
+    if (res.ok) notify.ok(`${key === 'all' ? '全部服务' : meta(key).title}：${label}指令已执行`);
     else notify.error(res.err || `${label}失败`);
     await ctx.refresh();
   }
@@ -290,6 +313,12 @@ export function mount(root, ctx) {
     } else if (action === 'open-data') {
       const res = await api.open('data');
       if (!res.ok) notify.error(res.err || '打不开');
+    } else if (action === 'open-qq') {
+      btn.disabled = true;
+      const res = await api.snowlumaQQ();
+      btn.disabled = false;
+      if (!res.ok) notify.error(res.err || '没能拉起 QQ');
+      else notify.ok('QQ 已拉起，登录请在 QQ 窗口里扫码');
     } else if (action === 'open-webui' || action === 'open-napcat') {
       const res = await api.open(action === 'open-webui' ? 'webui' : 'napcat');
       if (!res.ok) notify.error(res.err || '打不开');

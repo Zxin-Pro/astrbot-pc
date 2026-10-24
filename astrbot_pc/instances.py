@@ -178,10 +178,14 @@ def create(payload: dict[str, Any]) -> dict[str, Any]:
     napcat_port = int(payload.get("napcatPort") or _free(int(paths.DEFAULT_PORTS.get("napcat", 6099)), used))
     used.add(napcat_port)
     astrbot_port = int(payload.get("astrbotPort") or _free(int(paths.DEFAULT_PORTS.get("astrbot", 6185)), used))
+    proto = str(payload.get("protocol") or "napcat").strip().lower()
+    if proto not in ("napcat", "snowluma"):
+        proto = "napcat"
     item = {
         "id": iid,
         "name": name,
         "qq": qq,
+        "protocol": proto,
         "token": str(payload.get("token") or "").strip(),
         "port": port,
         "napcatPort": napcat_port,
@@ -240,12 +244,17 @@ def update(iid: str, payload: dict[str, Any]) -> dict[str, Any]:
             if dup:
                 return {"ok": False, "err": dup}
             it[key] = val
+        if "protocol" in payload:
+            proto = str(payload.get("protocol") or "").strip().lower()
+            if proto not in ("napcat", "snowluma"):
+                return {"ok": False, "err": "协议端只能是 NapCat 或 SnowLuma"}
+            it["protocol"] = proto
         if "enabled" in payload:
             it["enabled"] = bool(payload.get("enabled"))
         items[i] = it
         _save(items)
         needs = False
-        if active_id() == iid and any(k in payload for k in ("port", "napcatPort", "astrbotPort", "token")):
+        if active_id() == iid and any(k in payload for k in ("port", "napcatPort", "astrbotPort", "token", "protocol")):
             from . import deploy
 
             ok, _detail = deploy.write_wiring(it, False)

@@ -14,9 +14,9 @@
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `AstrBotPC-1.0.1-win64-offline.zip` | 约 280 MB | **懒人版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码、全部依赖 wheel，还有一份便携 Python 3.12——部署全程不联网，也不用另装 Python |
-| `AstrBotPC-1.0.1-win64.zip` | 约 23 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载，pip 装依赖，本机要有 Python 3.10+ |
-| `AstrBotPC-1.0.1-win64-single.exe` | 约 23 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒（原因见下）。部署时联网，同样要本机 Python |
+| `AstrBotPC-1.0.2-win64-offline.zip` | 约 280 MB | **懒人版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码、全部依赖 wheel，还有一份便携 Python 3.12——部署全程不联网，也不用另装 Python |
+| `AstrBotPC-1.0.2-win64.zip` | 约 23 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载，pip 装依赖，本机要有 Python 3.10+ |
+| `AstrBotPC-1.0.2-win64-single.exe` | 约 23 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒（原因见下）。部署时联网，同样要本机 Python |
 
 三个包是**同一份程序**，界面和功能完全一样，区别只在「部署安装那几分钟怎么过」。
 
@@ -81,8 +81,8 @@ AstrBotPC/
 | **日志** | 按文件浏览，级别筛选，关键字搜索，跟随滚动，单文件清空 / 删除 / 下载，导出 / 导入 |
 | **登录** | 每 3 秒自动抓 NapCat 二维码，支持换一张、存图片；右侧是扫码排障清单与风控提醒 |
 | **排障** | 六段端到端自检、一键体检、内置命令行、崩溃记录、诊断包导出 / 下载 / 删除、重置部署进度；出问题先来这一页 |
-| **扩展** | 组件更新中心（PC / AstrBot / NapCat / 插件版本、检查更新、升级前快照与回滚）和插件管理器（启停、GitHub / zip 安装、配置、日志、卸载） |
-| **实例** | 一个 QQ 号一套独立的数据目录、三个端口和进程组，可同时挂多个号；支持当前实例、一键接线、自动挑空闲端口、冲突标红、分别启停 |
+| **扩展** | 组件更新中心（PC / AstrBot / NapCat / 插件版本、检查更新、升级前快照与回滚）、插件管理器（启停、GitHub / zip 安装、配置、日志、卸载）与协议端安装（NapCat / SnowLuma） |
+| **实例** | 一个 QQ 号一套独立的数据目录、三个端口和进程组，可同时挂多个号；每个实例可选 NapCat 或 SnowLuma 作协议端；支持当前实例、一键接线、自动挑空闲端口、冲突标红、分别启停 |
 | **备份** | 后台打包带进度与取消，从文件恢复，每日自动备份，下载与删除，占用统计 |
 | **设置** | 主题、玻璃三档、精简模式、自定义背景图、开机启动、托盘、自动检查更新、自动重启、首选端口、局域网访问、pip 镜像、AstrBot 安装方式、存储清理、隐私 / 协议入口、匿名统计、重置数据 |
 
@@ -112,6 +112,7 @@ AstrBotPC/
 | 本界面 API | 17650 | 仅监听 `127.0.0.1` |
 | NapCat WebUI | 6099 | 与手机版一致 |
 | AstrBot 控制台 | 6185 | 与手机版一致；第一个实例默认用这三项，后续实例自动避让 |
+| SnowLuma WebUI | 6099（同 NapCat 位） | 选了 SnowLuma 的实例，这一格就是它的 WebUI |
 | OneBot 反向 WS | 6199 | NapCat → AstrBot；每个实例一组 |
 
 端口可以在「实例」页改；改完在「服务」页重启对应进程生效。
@@ -138,6 +139,7 @@ astrbot-pc/
 │  ├─ download.py   断点续传下载、解压、剥顶层目录
 │  ├─ envcheck.py   Python / Git / QQ NT / 磁盘 / 网络的体检
 │  ├─ runtime.py    每实例独立根目录、端口与路径
+│  ├─ snowluma.py   SnowLuma 安装、配置与启动参数
 │  ├─ llm.py        AstrBot 的模型与人格配置（单 / 多线路、写 cmd_config.json 与 data_v4.db）
 │  ├─ failover.py   线路健康检查、优先级与故障转移
 │  ├─ selftest.py   试聊与六段端到端自检
@@ -192,9 +194,9 @@ python tools\build_offline.py --lazy       # 缺什么下什么，连便携 Pyth
 
 powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 # → dist\AstrBotPC\AstrBotPC.exe                     目录版
-# → dist\AstrBotPC-1.0.1-win64.zip                   目录版压缩包（23 MB，联网装）
-# → dist\AstrBotPC-1.0.1-win64-single.exe            单文件版（23 MB，联网装）
-# → dist\AstrBotPC-1.0.1-win64-offline.zip           懒人版（280 MB，不联网也不用装 Python）
+# → dist\AstrBotPC-1.0.2-win64.zip                   目录版压缩包（23 MB，联网装）
+# → dist\AstrBotPC-1.0.2-win64-single.exe            单文件版（23 MB，联网装）
+# → dist\AstrBotPC-1.0.2-win64-offline.zip           懒人版（280 MB，不联网也不用装 Python）
 ```
 
 没有 `resources\` 时最后一行会自动跳过，其余产物不变。不加 `--lazy` 也能出离线版，只是那一包还需要用户机器上有 Python。
@@ -209,8 +211,8 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
    ```powershell
    set GITHUB_TOKEN=ghp_xxx
-   python tools\release.py        # 建 pc-v1.0.1 Release + 上传 zip 与离线包
-   python tools\upload_asset.py dist\AstrBotPC-1.0.1-win64-single.exe --tag pc-v1.0.1
+   python tools\release.py        # 建 pc-v1.0.2 Release + 上传 zip 与离线包
+   python tools\upload_asset.py dist\AstrBotPC-1.0.2-win64-single.exe --tag pc-v1.0.2
    ```
 
    tag 必须用 `pc-v<版本>` 或资产名带 `PC`——`update.py` 只认这两种，否则客户端不会提示更新。
@@ -338,6 +340,16 @@ wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。目录版和单�
 ---
 
 ## 九、更新日志
+
+### 1.0.2
+
+协议端这一版，1.0.x 的小更新：
+
+- **NapCat / SnowLuma 二选一**：实例页能选协议端。SnowLuma 挂在已登录的 QQ 上做 OneBot 转换，走它自己的 WebUI 端口与工作目录，配置、日志跟着实例走，多实例并行不抢文件。
+- **一键装 SnowLuma**：「扩展」页的「协议端」卡片显示两者的安装状态与版本，点一下后台下载安装（约 41 MB，有进度条），装好再回实例页切过去。
+- **登录页按协议端改写**：选 SnowLuma 时不再等二维码，换成「拉起 QQ」+ 在 QQ 窗口扫码的三步提示，帮助卡也换成 QQ 侧的排查项。
+- **部署向导跟着变**：不用那个协议端的一步会标「已跳过」并写明原因，启动步骤改名为「启动 SnowLuma」。
+- **修**：切换协议端后部署页还显示旧步骤名。
 
 ### 1.0.1
 

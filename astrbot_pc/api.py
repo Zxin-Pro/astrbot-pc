@@ -18,7 +18,7 @@ from urllib.parse import parse_qs
 
 from . import (appearance, backup, components, config, console, creds, crash, deploy, doctor,
                envcheck, failover, instances, llm, logs, metrics, paths, plugins, probe,
-               selftest, startup, stats, storage, update)
+               runtime, selftest, snowluma, startup, stats, storage, update)
 from .events import bus
 from .services import manager
 
@@ -901,3 +901,86 @@ def selftest_chat(body: dict[str, Any], **_: Any) -> dict[str, Any]:
 @route("POST", r"/api/selftest/e2e")
 def selftest_e2e_post(body: dict[str, Any], **_: Any) -> dict[str, Any]:
     return selftest.e2e(str(body.get("iid") or "").strip() or None)
+
+
+# ---------------- 协议端（NapCat / SnowLuma） ----------------
+
+@route("GET", r"/api/protocol")
+def protocol_list(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    """两个协议端各自装没装、当前实例选了谁。"""
+    iid = (query.get("iid") or [""])[0] or None
+    sid = iid or runtime.active_id()
+    napcat_ready = ""
+    try:
+        napcat_ready = deploy._napcat_ready(paths.STACK_DIR / "napcat") or ""
+    except Exception:
+        napcat_ready = ""
+    snow = snowluma.info(sid)
+    return {
+        "ok": True,
+        "iid": sid,
+        "active": runtime.protocol(sid),
+        "items": [
+            {"key": "napcat", "name": "NapCat", "installed": bool(napcat_ready),
+             "detail": napcat_ready,
+             "desc": "跟着 QQ 启动、注入后接管；二维码在 PC 端看",
+             "repo": "https://github.com/NapNeko/NapCatQQ"},
+            {"key": "snowluma", "name": "SnowLuma",
+             "installed": bool(snow.get("installed")),
+             "detail": str(snow.get("ready") or ""), "version": snow.get("version") or "",
+             "latest": snow.get("latest") or "", "newer": bool(snow.get("newer")),
+             "desc": "挂在已登录的 QQ 上做 OneBot 转换；扫码在 QQ 窗口里",
+             "repo": snow.get("repo") or "https://github.com/SnowLuma/SnowLuma"},
+        ],
+        "snowluma": snow,
+        "install": snowluma.install_job(),
+    }
+
+
+@route("POST", r"/api/protocol")
+def protocol_set(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    iid = str(body.get("iid") or "").strip() or (runtime.active_id() or "")
+    proto = str(body.get("protocol") or "").strip().lower()
+    if proto not in ("napcat", "snowluma"):
+        return {"ok": False, "err": "协议端只能是 NapCat 或 SnowLuma"}
+    if proto == "snowluma" and not snowluma.ready():
+        return {"ok": False, "err": "SnowLuma 还没装好，先点「安装 SnowLuma」"}
+    res = instances.update(iid, {"protocol": proto})
+    if not res.get("ok"):
+        return res
+    try:
+        ok, detail = deploy.write_wiring(runtime.get(iid) or {}, False)
+    except Exception as e:
+        ok, detail = False, f"{type(e).__name__}: {e}"
+    return {"ok": True, "item": res.get("item"), "wiring": bool(ok),
+            "detail": detail if isinstance(detail, str) else "",
+            "needsRestart": True}
+
+
+@route("GET", r"/api/snowluma")
+@route("GET", r"/api/snowluma/info")
+def snowluma_info(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
+    return snowluma.info((query.get("iid") or [""])[0] or None)
+
+
+@route("POST", r"/api/snowluma/install")
+def snowluma_install(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return snowluma.install_start(bool(body.get("force")))
+
+
+@route("GET", r"/api/snowluma/install")
+def snowluma_install_job(**_: Any) -> dict[str, Any]:
+    job = snowluma.install_job()
+    job["installed"] = bool(snowluma.ready())
+    return {"ok": True, "job": job}
+
+
+@route("POST", r"/api/snowluma/config")
+def snowluma_write_config(body: dict[str, Any], **_: Any) -> dict[str, Any]:
+    return snowluma.write_config(str(body.get("iid") or "").strip() or None)
+
+
+@route("POST", r"/api/snowluma/qq")
+def snowluma_qq(**_: Any) -> dict[str, Any]:
+    """手动把 QQ 拉起来（SnowLuma 需要宿主）。"""
+    return snowluma.ensure_qq()

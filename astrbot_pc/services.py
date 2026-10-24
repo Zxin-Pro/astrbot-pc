@@ -54,6 +54,20 @@ def _child_env(iid: str = "", role: str = "") -> dict[str, str]:
         env["DASHBOARD_PORT"] = str(runtime.port(iid, "astrbot"))
         env["ASTRBOT_DASHBOARD_PORT"] = str(runtime.port(iid, "astrbot"))
         env["ASTRBOT_DASHBOARD_HOST"] = "127.0.0.1"
+    if role == "napcat" and iid and runtime.protocol(iid) == "snowluma":
+        # SnowLuma 的数据目录 = cwd，另外它自己认这几个 SNOWLUMA_* 变量。
+        sdir = runtime.snowluma_dir(iid)
+        env["SNOWLUMA_ACCEPT_EULA"] = "1"
+        env["SNOWLUMA_ACCEPT_PRIVACY"] = "1"
+        env["SNOWLUMA_WEBUI_PORT"] = str(runtime.port(iid, "napcat"))
+        env["SNOWLUMA_WEBUI_HOST"] = "127.0.0.1"
+        env["SNOWLUMA_WEBUI_TLS"] = "0"
+        env["SNOWLUMA_ONEBOT_HTTP_PORT"] = "0"
+        env["SNOWLUMA_ONEBOT_WS_PORT"] = "0"
+        env["SNOWLUMA_HOOK_AUTOLOAD"] = "1"
+        env["SNOWLUMA_UPDATE_CHECK"] = "0"
+        env["SNOWLUMA_LOG_DIR"] = str(sdir / "logs")
+        return env
     if role == "napcat" and iid:
         inst = runtime.get(iid) or {}
         ndir = runtime.napcat_workdir(iid)
@@ -119,8 +133,15 @@ class ServiceManager:
 
     def _get(self, iid: str, key: str) -> ServiceState:
         k = (iid, key)
+        if key == "napcat":
+            # 同一个 key 可能是 NapCat 也可能是 SnowLuma，名字跟着实例走
+            name = "SnowLuma" if runtime.protocol(iid) == "snowluma" else "NapCat"
+        else:
+            name = "AstrBot"
         if k not in self.states:
-            self.states[k] = ServiceState(iid, key, "NapCat" if key == "napcat" else "AstrBot")
+            self.states[k] = ServiceState(iid, key, name)
+        else:
+            self.states[k].name = name
         return self.states[k]
 
     def _role_enabled(self, iid: str, key: str) -> bool:
@@ -166,6 +187,24 @@ class ServiceManager:
             raise RuntimeError("AstrBot 目录里找不到 main.py，可能装坏了")
 
         if key == "napcat":
+            from . import snowluma
+
+            if runtime.protocol(sid) == "snowluma":
+                if custom:
+                    cwd = runtime.snowluma_dir(sid)
+                    return _split(custom), str(cwd)
+                node = snowluma.node_exe()
+                mjs = snowluma.index_js()
+                if not node or not mjs.exists():
+                    raise RuntimeError("SnowLuma 还没装好，请先在「扩展 · 组件更新」里装它")
+                snowluma.ensure_dirs(sid)
+                # QQ 是宿主，先确保它在跑（SnowLuma 会自己注入进去）
+                qq = snowluma.ensure_qq()
+                if not qq.get("ok"):
+                    raise RuntimeError(str(qq.get("err") or "没能启动 QQ"))
+                snowluma.write_config(sid)
+                # index.mjs 必须绝对路径；cwd 是实例数据根
+                return [str(node), str(mjs.resolve())], str(snowluma.workdir(sid))
             base = _napcat_base()
             if custom:
                 cwd = runtime.napcat_workdir(sid)
