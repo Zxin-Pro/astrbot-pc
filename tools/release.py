@@ -17,12 +17,12 @@ import urllib.request
 from pathlib import Path
 
 REPO = "Zxin-Pro/astrbot-pc"
-TAG = "pc-v1.0.3"
-NAME = "烛之控制台 v1.0.3 · PC 端"
+TAG = "pc-v1.0.4"
+NAME = "烛之控制台 v1.0.4 · PC 端"
 DIST = Path(__file__).resolve().parent.parent / "dist"
-ZIP = DIST / "AstrBotPC-1.0.3-win64.zip"
-OFFLINE = DIST / "AstrBotPC-1.0.3-win64-offline.zip"
-SINGLE = DIST / "AstrBotPC-1.0.3-win64-single.exe"
+ZIP = DIST / "AstrBotPC-1.0.4-win64.zip"
+OFFLINE = DIST / "AstrBotPC-1.0.4-win64-offline.zip"
+SINGLE = DIST / "AstrBotPC-1.0.4-win64-single.exe"
 
 TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 HEADERS = {
@@ -39,9 +39,9 @@ BODY = """## {name}
 
 | 文件 | 大小 | 适合谁 | 装的时候 |
 |---|---|---|---|
-| **AstrBotPC-1.0.3-win64-offline.zip**（懒人版） | 约 280 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
-| AstrBotPC-1.0.3-win64.zip（目录版） | 约 23 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
-| AstrBotPC-1.0.3-win64-single.exe（单文件版） | 约 23 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
+| **AstrBotPC-1.0.4-win64-offline.zip**（懒人版） | 约 280 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
+| AstrBotPC-1.0.4-win64.zip（目录版） | 约 23 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
+| AstrBotPC-1.0.4-win64-single.exe（单文件版） | 约 23 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
 
 **懒人版**里带着 NapCat、AstrBot 源码、151 个依赖 wheel，还有一份便携 Python 3.12。下载一个包，解压，双击 `AstrBotPC.exe`，点「开始部署」，全程不用打开浏览器、不用装任何东西、不用连网。
 
@@ -52,6 +52,13 @@ BODY = """## {name}
 - Windows 10/11 自带 WebView2，更老的系统补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 - 绿色版：删目录即卸载，配置与日志写在 `%LOCALAPPDATA%\\AstrBotPC`
 - 懒人版体积大是因为资源摆在 `AstrBotPC.exe` 旁边的 `resources\\` 里，删掉它就是目录版
+
+### 1.0.4：部署页跟着协议端走
+
+- **修**：在「实例」页把协议端从 NapCat 切到 SnowLuma（或反过来）后，部署页还显示上一个协议端的步骤名和「已跳过」。现在打开部署页会先拉一次最新状态，切完也会立刻重算，不用刷新页面。
+- **修**：页面刚打开时会把历史部署事件重放一遍，用旧快照盖掉首屏数据——这是上面那个问题的另一半原因。现在只有断线重连带上次的 seq 才补增量。
+- **内部**：部署状态里的结果字段从 `ok` 改名 `lastOk`。它和接口信封的 `ok` 重名，会把「请求成功」覆盖成 `false`，前端据此以为接口失败、干脆不更新页面。
+- 顺带补了 `tools/probe_creds.py`：一条命令回归出厂口令（Astrbot123 / zhuxin），防止以后被改回去。
 
 ### 1.0.3：出厂口令直接可用
 

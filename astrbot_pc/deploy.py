@@ -158,7 +158,9 @@ class DeployRunner:
         self.state: dict[str, Any] = {
             "running": False,
             "finished": False,
-            "ok": False,
+            # 注意：这里不能叫 "ok"。api 层给前端的外层信封是 {"ok": True, **status()}，
+            # 两者同名会把外层 ok 覆盖成 False，store.refreshDeploy() 就会以为请求失败、不再更新。
+            "lastOk": False,
             "dryRun": True,
             "current": "",
             "message": "",
@@ -172,7 +174,7 @@ class DeployRunner:
     # ---------- 查询 ----------
 
     def status(self) -> dict[str, Any]:
-        """pending 步的名字/说明/跳过标记每次都按当前协议端重算。
+        """步骤的名字/说明/跳过标记每次都按当前协议端重算。
 
         runner 初始化时只复制了一份裸 STAGES，而「本次用 SnowLuma，跳过 NapCat」
         这类文案和 napcat-run 改叫「启动 SnowLuma」都只在 stages() 里算过；
@@ -188,7 +190,9 @@ class DeployRunner:
             for s in self.state["steps"]:
                 item = dict(s)
                 m = meta.get(item["key"]) or {}
-                if item.get("status") == "pending":
+                # 跑着的那一步别换名字；其余（含已完成的）都按当前协议端重算，
+                # 否则切完协议端再打开部署页，历史步骤还挂着旧协议端的标题。
+                if item.get("status") != "running":
                     for f in ("name", "desc"):
                         if m.get(f):
                             item[f] = m[f]
@@ -247,7 +251,7 @@ class DeployRunner:
         self._last_progress = 0.0
         with self.lock:
             self.state.update({
-                "running": True, "finished": False, "ok": False, "dryRun": bool(dry_run),
+                "running": True, "finished": False, "lastOk": False, "dryRun": bool(dry_run),
                 "current": "", "message": "准备开始", "startedAt": int(time.time()), "finishedAt": 0,
                 "progress": _empty_progress(),
             })
@@ -273,7 +277,7 @@ class DeployRunner:
         self.cancel_flag.clear()
         with self.lock:
             self.state.update({
-                "running": False, "finished": False, "ok": False, "dryRun": True,
+                "running": False, "finished": False, "lastOk": False, "dryRun": True,
                 "current": "", "message": "已重置部署状态", "startedAt": 0, "finishedAt": 0,
                 "progress": _empty_progress(),
             })
@@ -335,7 +339,7 @@ class DeployRunner:
             else:
                 final = "未完成，请看失败步骤的说明"
             self.state.update({
-                "running": False, "finished": True, "ok": all_ok,
+                "running": False, "finished": True, "lastOk": all_ok,
                 "message": final,
                 "finishedAt": int(time.time()),
                 "progress": _empty_progress(),

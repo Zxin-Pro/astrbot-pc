@@ -251,3 +251,9 @@ pythonnet 3.x 靠 `clr_loader` + `cffi` 去找 `Python.Runtime.dll`；这两个�
 - NapCat 的 WebUI 令牌：`NAPCAT_WEBUI_SECRET_KEY` 传 `zhuxin` 会原样写进 `webui.json`；但传空或 `napcat` 会被 NapCat 随机化，所以 `_child_env` 里必须兜底成出厂值。
 - 验证密码别只在自家代码里闭环：把 AstrBot 自己的 `astrbot/core/utils/auth_password.py` 用 `importlib` 直接加载，调 `verify_dashboard_password` 才算数（该文件不 import 第三方包，能被单独加载）。
 - 真正落地要起一次 AstrBot：用实例的 `stack/venv/Scripts/python.exe main.py`，env 给 `ASTRBOT_ROOT` 与 `DASHBOARD_PORT`，等 `/api/v1/openapi.json` 起来后打 `POST /api/auth/login`（`{"username":"astrbot","password":"Astrbot123"}`）应返回 200 + token，错密码应 401。改过凭据的老实例要重启 AstrBot / NapCat 才生效（配置是启动时读的）。
+
+## 部署页与协议端（1.0.4）
+
+- **内部状态字段别叫 `ok`**。接口习惯用 `{"ok": True, **payload}` 做信封，payload 里再有一个 `ok`（「上一次部署成不成功」）就会把信封覆盖成 `false`；前端 `if (!res.ok) return` 会安静地跳过更新，表现成「接口明明返回了新数据，页面就是不刷新」。部署结果字段现在叫 `lastOk`。排查这类问题的最快路径是在页面上下文里 `const m = await import('/js/store.js')`，直接打印 `m.store.deploy` 并手动 `await m.refreshDeploy()` 看返回值——比盯 DOM 快得多。
+- **新打开的页面不要回放历史事件**。EventBus 的 `since=0` 语义是「我不知道进度」，把 `deque` 里最近 50 条全倒给它，等于用旧的部署快照覆盖 bootstrap 刚给的当下状态（切过协议端就会看到旧步骤名）。只有 `since > 0`（断线重连带上次 seq）才该补增量，SSE 与 `/api/events/poll` 两条路都要按这个约定。
+- **页面自己拉一次再画**。路由的 `update(store, reason)` 依赖 store 被 patch；刷新请求可能比页面登记订阅更早返回，光靠事件会漏。挂载时主动 `await ctx.refreshDeploy()` 再 `renderSteps()`，并在 `reason === 'instances'`（刚改过协议端）时同时改文案和重拉。

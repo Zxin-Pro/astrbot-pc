@@ -13,7 +13,7 @@
 # 中文脚本会按 ANSI 解码，引号会被吃掉，报 "string is missing the terminator"。
 
 param(
-  [string]$Version = '1.0.3'
+  [string]$Version = '1.0.4'
 )
 
 $ErrorActionPreference = 'Stop'

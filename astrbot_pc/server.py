@@ -126,10 +126,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Connection", "keep-alive")
             self.send_header("X-Accel-Buffering", "no")
             self.end_headers()
+            # since=0 表示「刚打开的页面」：首屏状态由 bootstrap 给的是当下的，
+            # 再把历史事件倒一遍只会用旧的部署快照盖掉新数据（切过协议端就会看到旧步骤名）。
+            # 断线重连带的是上次的 seq，那才是真正需要补的增量。
             since = int((query.get("since") or ["0"])[0] or 0)
-            for msg in bus.since(since)[-50:]:
-                self.wfile.write(b"data: " + json.dumps(msg, ensure_ascii=False).encode("utf-8") + b"\n\n")
-            self.wfile.flush()
+            if since > 0:
+                for msg in bus.since(since)[-50:]:
+                    self.wfile.write(b"data: " + json.dumps(msg, ensure_ascii=False).encode("utf-8") + b"\n\n")
+                self.wfile.flush()
             for chunk in bus.stream(sid, q, stop):
                 try:
                     self.wfile.write(chunk.encode("utf-8"))

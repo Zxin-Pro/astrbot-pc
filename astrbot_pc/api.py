@@ -484,9 +484,13 @@ def _server_info() -> dict[str, Any]:
 
 @route("GET", r"/api/events/poll")
 def events_poll(query: dict[str, list[str]], **_: Any) -> dict[str, Any]:
-    """SSE 不可用时的兜底：按 seq 拉增量事件。"""
+    """SSE 不可用时的兜底：按 seq 拉增量事件。
+
+    seq=0 是「刚打开的页面」，不该把整段历史倒给它——首屏数据来自 bootstrap，
+    再拿旧的部署快照覆盖回去就会出现「切了协议端，部署页还是旧步骤名」。
+    """
     seq = int((query.get("seq") or ["0"])[0] or 0)
-    items = bus.since(seq)
+    items = bus.since(seq) if seq > 0 else []
     return {"ok": True, "items": items, "seq": bus.last_seq()}
 
 

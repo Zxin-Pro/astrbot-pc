@@ -89,7 +89,7 @@ export function mount(root, ctx) {
             <div class="card">
               <div class="card-head"><h3>装好之后</h3></div>
               <ol class="stack" style="font-size:13px;color:var(--ink-2);padding-left:2px">
-                <li class="inline"><span class="step__idx" style="width:20px;height:20px;font-size:11px">1</span> ${proto() === 'snowluma' ? '让 QQ 窗口登录，扫码就在 QQ 里完成' : '打开「登录」把手机 QQ 扫上去'}</li>
+                <li class="inline"><span class="step__idx" style="width:20px;height:20px;font-size:11px">1</span> <span id="howto-login">${proto() === 'snowluma' ? '让 QQ 窗口登录，扫码就在 QQ 里完成' : '打开「登录」把手机 QQ 扫上去'}</span></li>
                 <li class="inline"><span class="step__idx" style="width:20px;height:20px;font-size:11px">2</span> 在「服务」里确认两个进程都是运行中</li>
                 <li class="inline"><span class="step__idx" style="width:20px;height:20px;font-size:11px">3</span> 去 AstrBot 控制台填模型 API Key</li>
               </ol>
@@ -205,6 +205,22 @@ export function mount(root, ctx) {
     renderEnv();
   }
 
+  // 协议端在「实例」页切过之后，页头和「装好之后」也必须跟着换，
+  // 只在挂载时拼一次会一直挂着旧协议端的名字。
+  function paintProtocol() {
+    const name = pname();
+    const desc = root.querySelector('.page-head__text p');
+    if (desc) desc.textContent = `把 ${name} 和 AstrBot 装到这台电脑上，并接好线。`;
+    const note = root.querySelector('#dry-banner-note');
+    if (note) note.textContent = `关掉后才会联网拉取 ${name} 与 AstrBot。`;
+    const how = root.querySelector('#howto-login');
+    if (how) {
+      how.textContent = proto() === 'snowluma'
+        ? '让 QQ 窗口登录，扫码就在 QQ 里完成'
+        : '打开「登录」把手机 QQ 扫上去';
+    }
+  }
+
   function renderSteps() {
     const d = ctx.store.deploy || {};
     const steps = d.steps && d.steps.length ? d.steps : (ctx.store.stages || []);
@@ -233,7 +249,7 @@ export function mount(root, ctx) {
       cancelBtn.hidden = true;
       root.querySelector('[data-act="start"]').disabled = false;
       if (d.finishedAt) {
-        if (!d.ok) {
+        if (!d.lastOk) {
           subEl.textContent = '有步骤没走通，看红字说明';
         } else if (d.dryRun) {
           subEl.textContent = '演练通过，但什么都没装';
@@ -275,6 +291,11 @@ export function mount(root, ctx) {
 
   renderEnv();
   renderSteps();
+  // 协议端可能在「实例」页刚切过，store.deploy 里那份还是开页前的旧快照，
+  // 步骤名（启动 NapCat / 启动 SnowLuma）和「已跳过」都会挂着旧协议端。
+  // 这里拿到结果自己重画一次：刷新可能比路由登记 update 更早返回，只靠事件会漏。
+  const pulled = ctx.refreshDeploy ? ctx.refreshDeploy() : null;
+  if (pulled && pulled.then) pulled.then(() => { paintProtocol(); renderSteps(); }).catch(() => {});
 
   dryToggle.checked = ctx.store.config?.deploy?.dryRun !== false;
   dryToggle.addEventListener('change', async () => {
@@ -338,6 +359,12 @@ export function mount(root, ctx) {
   return {
     update(store, reason) {
       if (reason === 'deploy') renderSteps();
+      // 实例页刚改过协议端：先就地换文案，再拉一次最新状态把跳过标记补齐
+      if (reason === 'instances') {
+        paintProtocol();
+        renderSteps();
+        if (ctx.refreshDeploy) ctx.refreshDeploy();
+      }
       if (reason === 'bootstrap' || reason === 'state' || reason === 'refresh'
           || reason === 'deploy') renderEnv();
       // 不管哪个事件进来的，只要发现有「刚结束的部署」就补一次体检

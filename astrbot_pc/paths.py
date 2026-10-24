@@ -13,7 +13,7 @@ from pathlib import Path
 APP_NAME = "AstrBotPC"
 APP_TITLE = "烛之控制台"
 APP_SUBTITLE = "AstrBot 烛版 · PC 端"
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 
 # 出厂口令：装完就能直接用，不用去日志里翻随机串。
 # - AstrBot 控制台（Dashboard）的初始密码
