@@ -250,3 +250,4 @@ pythonnet 3.x 靠 `clr_loader` + `cffi` 去找 `Python.Runtime.dll`；这两个�
 - 已经有密码的配置绝不覆盖（用户改过的密码不能被一次部署抹掉）。判断依据就是 `dashboard` 里两个哈希是否都为空。
 - NapCat 的 WebUI 令牌：`NAPCAT_WEBUI_SECRET_KEY` 传 `zhuxin` 会原样写进 `webui.json`；但传空或 `napcat` 会被 NapCat 随机化，所以 `_child_env` 里必须兜底成出厂值。
 - 验证密码别只在自家代码里闭环：把 AstrBot 自己的 `astrbot/core/utils/auth_password.py` 用 `importlib` 直接加载，调 `verify_dashboard_password` 才算数（该文件不 import 第三方包，能被单独加载）。
+- 真正落地要起一次 AstrBot：用实例的 `stack/venv/Scripts/python.exe main.py`，env 给 `ASTRBOT_ROOT` 与 `DASHBOARD_PORT`，等 `/api/v1/openapi.json` 起来后打 `POST /api/auth/login`（`{"username":"astrbot","password":"Astrbot123"}`）应返回 200 + token，错密码应 401。改过凭据的老实例要重启 AstrBot / NapCat 才生效（配置是启动时读的）。
