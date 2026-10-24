@@ -147,7 +147,8 @@ export function mount(root, ctx) {
         </label>
         <label class="field">
           <span class="field__label">访问令牌</span>
-          <input class="input mono" name="token" value="${esc(v.token || '')}" placeholder="留空则不校验" />
+          <input class="input mono" name="token" value="${esc(v.token || '')}" placeholder="出厂 zhuxin；留空则不校验" />
+          <span class="field__help">NapCat / SnowLuma 与 AstrBot 两边写同一个值，改完点「一键接线」才生效。</span>
         </label>
         <label class="row-switch field--full">
           <span>

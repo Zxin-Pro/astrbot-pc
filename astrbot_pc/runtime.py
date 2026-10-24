@@ -288,8 +288,12 @@ def migrate_ports() -> list[dict[str, Any]]:
             if it.get(key) != num:
                 it[key] = num
                 changed = True
+        # 令牌也给出厂值：老版本留空（等于不校验）或随机，用户根本对不上两边的配置。
+        if not str(it.get("token") or "").strip():
+            it["token"] = paths.DEFAULT_ONEBOT_TOKEN
+            changed = True
         if not it.get("napcatSecret"):
-            it["napcatSecret"] = os.urandom(12).hex()
+            it["napcatSecret"] = paths.DEFAULT_NAPCAT_SECRET
             changed = True
     if changed:
         config.save({"instances": items})
@@ -305,7 +309,7 @@ def auth_password_hint(iid: str | None = None) -> str:
     dash = data.get("dashboard") or {}
     if dash.get("pbkdf2_password") or dash.get("password"):
         return ""
-    return "astrbot"
+    return paths.DEFAULT_DASHBOARD_PASSWORD
 
 
 def api_base(iid: str | None = None) -> str:

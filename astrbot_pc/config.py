@@ -58,7 +58,7 @@ DEFAULTS: dict[str, Any] = {
             "id": "bot1",
             "name": "主号",
             "qq": "",
-            "token": "",
+            "token": paths.DEFAULT_ONEBOT_TOKEN,
             "port": paths.DEFAULT_PORTS["onebot"],
             "napcatPort": paths.DEFAULT_PORTS["napcat"],
             "enabled": True,

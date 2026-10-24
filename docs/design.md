@@ -240,3 +240,13 @@ pythonnet 3.x 靠 `clr_loader` + `cffi` 去找 `Python.Runtime.dll`；这两个�
 - **它自己会拉 QQ**：`hookAutoLoad` 默认开，进程起来会去找 `QQ.exe` 注入。测试时把 `SNOWLUMA_HOOK_AUTOLOAD=0` 打开，只验「进程能起、WebUI 能听、配置读对」，别去注入用户正在用的 QQ。
 - **登录只在 QQ 窗口里**：SnowLuma 不落二维码文件，`/api/QQLogin/GetQQLoginQrcode` 给的是一串链接。所以登录页在 SnowLuma 下要换文案——给「拉起 QQ」按钮，告诉用户扫码在 QQ 里完成；别让用户对着空的二维码区等。
 - **协议端切换要刷新部署步骤**：`deploy.status()["steps"]` 是 runner 初始化时从裸 `STAGES` 复制的，不带 `skip`、也不会改名；而 `stages()` 才按当前协议端算「跳过 NapCat」「启动 SnowLuma」。`status()` 每次返回前用 `stages()` 把 pending 步的 name/desc/skip 重算一遍，界面才不会显示切之前的旧步骤。
+
+
+## 出厂口令（1.0.3）
+
+- **AstrBot 的密码要提前写进配置**。AstrBot 启动时若发现 `dashboard` 既没有 `pbkdf2_password` 也没有 `password`，会自己生成 24 位随机密码打到日志里（`astrbot/core/config/astrbot_config.py` 的 `_reset_generated_dashboard_password`）。想要固定密码，就得在部署写 `cmd_config.json` 时把两套哈希一起写进去——只写 env `ASTRBOT_DASHBOARD_INITIAL_PASSWORD` 也能生效，但它会顺手把 `password_change_required` 设成 `true`，用户登录后会被强制改密码。
+- 哈希格式必须和 AstrBot 一致：`pbkdf2_sha256$600000$<salt hex>$<digest hex>`，salt 16 字节，迭代 60 万次；md5 那套是兼容旧登录路径的兜底，两套都写。
+- **出厂值集中放 `paths.py`**（`DEFAULT_DASHBOARD_PASSWORD` / `DEFAULT_ONEBOT_TOKEN` / `DEFAULT_NAPCAT_SECRET`），别散在各模块里当字面量；`creds.py` 只引用常量，并保留老密码 `astrbot` 的识别，老配置仍能显示明文。
+- 已经有密码的配置绝不覆盖（用户改过的密码不能被一次部署抹掉）。判断依据就是 `dashboard` 里两个哈希是否都为空。
+- NapCat 的 WebUI 令牌：`NAPCAT_WEBUI_SECRET_KEY` 传 `zhuxin` 会原样写进 `webui.json`；但传空或 `napcat` 会被 NapCat 随机化，所以 `_child_env` 里必须兜底成出厂值。
+- 验证密码别只在自家代码里闭环：把 AstrBot 自己的 `astrbot/core/utils/auth_password.py` 用 `importlib` 直接加载，调 `verify_dashboard_password` 才算数（该文件不 import 第三方包，能被单独加载）。

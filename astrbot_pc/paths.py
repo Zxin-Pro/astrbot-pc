@@ -13,7 +13,15 @@ from pathlib import Path
 APP_NAME = "AstrBotPC"
 APP_TITLE = "烛之控制台"
 APP_SUBTITLE = "AstrBot 烛版 · PC 端"
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
+
+# 出厂口令：装完就能直接用，不用去日志里翻随机串。
+# - AstrBot 控制台（Dashboard）的初始密码
+# - 实例的 OneBot 访问令牌（NapCat / SnowLuma 与 AstrBot 两边写同一个值）
+# - NapCat WebUI 的登录令牌
+DEFAULT_DASHBOARD_PASSWORD = "Astrbot123"
+DEFAULT_ONEBOT_TOKEN = "zhuxin"
+DEFAULT_NAPCAT_SECRET = "zhuxin"
 
 
 def is_frozen() -> bool:

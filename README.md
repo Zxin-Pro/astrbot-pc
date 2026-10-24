@@ -14,9 +14,9 @@
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `AstrBotPC-1.0.2-win64-offline.zip` | 约 280 MB | **懒人版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码、全部依赖 wheel，还有一份便携 Python 3.12——部署全程不联网，也不用另装 Python |
-| `AstrBotPC-1.0.2-win64.zip` | 约 23 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载，pip 装依赖，本机要有 Python 3.10+ |
-| `AstrBotPC-1.0.2-win64-single.exe` | 约 23 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒（原因见下）。部署时联网，同样要本机 Python |
+| `AstrBotPC-1.0.3-win64-offline.zip` | 约 280 MB | **懒人版**，解压后双击 `AstrBotPC.exe`。内置 NapCat、AstrBot 源码、全部依赖 wheel，还有一份便携 Python 3.12——部署全程不联网，也不用另装 Python |
+| `AstrBotPC-1.0.3-win64.zip` | 约 23 MB | **目录版**，解压后双击 `AstrBotPC.exe`，启动更快。部署时联网下载，pip 装依赖，本机要有 Python 3.10+ |
+| `AstrBotPC-1.0.3-win64-single.exe` | 约 23 MB | **单文件版**，拷到哪都能双击，冷启动多等 2–4 秒（原因见下）。部署时联网，同样要本机 Python |
 
 三个包是**同一份程序**，界面和功能完全一样，区别只在「部署安装那几分钟怎么过」。
 
@@ -117,6 +117,18 @@ AstrBotPC/
 
 端口可以在「实例」页改；改完在「服务」页重启对应进程生效。
 
+### 出厂口令
+
+装完就能直接登，不用去日志里翻随机串：
+
+| 用在哪 | 账号 / 令牌 | 改的地方 |
+| --- | --- | --- |
+| AstrBot 控制台 | `astrbot` / `Astrbot123` | 「服务」页 → 重设密码 |
+| NapCat / SnowLuma 的 OneBot 令牌 | `zhuxin` | 「实例」页 → 访问令牌（改完点一键接线） |
+| NapCat WebUI | 令牌 `zhuxin` | 同上，跟着实例的 NapCat 密钥走 |
+
+部署时会把 AstrBot 的密码哈希（md5 + pbkdf2）直接写进当前实例的 `cmd_config.json`，所以 AstrBot 不会自己另生成一个。已经有密码的老配置不会被覆盖。
+
 ---
 
 ## 四、工程结构
@@ -194,9 +206,9 @@ python tools\build_offline.py --lazy       # 缺什么下什么，连便携 Pyth
 
 powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 # → dist\AstrBotPC\AstrBotPC.exe                     目录版
-# → dist\AstrBotPC-1.0.2-win64.zip                   目录版压缩包（23 MB，联网装）
-# → dist\AstrBotPC-1.0.2-win64-single.exe            单文件版（23 MB，联网装）
-# → dist\AstrBotPC-1.0.2-win64-offline.zip           懒人版（280 MB，不联网也不用装 Python）
+# → dist\AstrBotPC-1.0.3-win64.zip                   目录版压缩包（23 MB，联网装）
+# → dist\AstrBotPC-1.0.3-win64-single.exe            单文件版（23 MB，联网装）
+# → dist\AstrBotPC-1.0.3-win64-offline.zip           懒人版（280 MB，不联网也不用装 Python）
 ```
 
 没有 `resources\` 时最后一行会自动跳过，其余产物不变。不加 `--lazy` 也能出离线版，只是那一包还需要用户机器上有 Python。
@@ -211,8 +223,8 @@ powershell -ExecutionPolicy Bypass -File tools\build_exe.ps1
 
    ```powershell
    set GITHUB_TOKEN=ghp_xxx
-   python tools\release.py        # 建 pc-v1.0.2 Release + 上传 zip 与离线包
-   python tools\upload_asset.py dist\AstrBotPC-1.0.2-win64-single.exe --tag pc-v1.0.2
+   python tools\release.py        # 建 pc-v1.0.3 Release + 上传 zip 与离线包
+   python tools\upload_asset.py dist\AstrBotPC-1.0.3-win64-single.exe --tag pc-v1.0.3
    ```
 
    tag 必须用 `pc-v<版本>` 或资产名带 `PC`——`update.py` 只认这两种，否则客户端不会提示更新。
@@ -340,6 +352,16 @@ wheel 是按打包时的 Python 挑的（cp312 / win_amd64）。目录版和单�
 ---
 
 ## 九、更新日志
+
+### 1.0.3
+
+出厂口令这一版：
+
+- **AstrBot 控制台默认密码 `Astrbot123`**：部署时直接写进 `cmd_config.json`（md5 + pbkdf2 两套哈希），不再是随机串、不用翻日志。账号 `astrbot`。
+- **NapCat / SnowLuma 的 OneBot 令牌默认 `zhuxin`**：实例配置写进协议端与 AstrBot 两边，老实例里留空的令牌会自动补上；改令牌后点「一键接线」即同步。
+- **NapCat WebUI 令牌默认 `zhuxin`**：装完就能登 WebUI。
+- 服务页的「重设密码」默认填入厂密码，实例页的令牌框留空即不改。
+- README 的端口表补了「出厂口令」一节。
 
 ### 1.0.2
 

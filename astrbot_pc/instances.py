@@ -186,10 +186,11 @@ def create(payload: dict[str, Any]) -> dict[str, Any]:
         "name": name,
         "qq": qq,
         "protocol": proto,
-        "token": str(payload.get("token") or "").strip(),
+        "token": str(payload.get("token") or "").strip() or paths.DEFAULT_ONEBOT_TOKEN,
         "port": port,
         "napcatPort": napcat_port,
         "astrbotPort": astrbot_port,
+        "napcatSecret": paths.DEFAULT_NAPCAT_SECRET,
         "enabled": bool(payload.get("enabled", True)),
         "createdAt": int(time.time()),
     }

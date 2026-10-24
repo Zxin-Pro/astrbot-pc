@@ -17,12 +17,12 @@ import urllib.request
 from pathlib import Path
 
 REPO = "Zxin-Pro/astrbot-pc"
-TAG = "pc-v1.0.2"
-NAME = "烛之控制台 v1.0.2 · PC 端"
+TAG = "pc-v1.0.3"
+NAME = "烛之控制台 v1.0.3 · PC 端"
 DIST = Path(__file__).resolve().parent.parent / "dist"
-ZIP = DIST / "AstrBotPC-1.0.2-win64.zip"
-OFFLINE = DIST / "AstrBotPC-1.0.2-win64-offline.zip"
-SINGLE = DIST / "AstrBotPC-1.0.2-win64-single.exe"
+ZIP = DIST / "AstrBotPC-1.0.3-win64.zip"
+OFFLINE = DIST / "AstrBotPC-1.0.3-win64-offline.zip"
+SINGLE = DIST / "AstrBotPC-1.0.3-win64-single.exe"
 
 TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 HEADERS = {
@@ -39,9 +39,9 @@ BODY = """## {name}
 
 | 文件 | 大小 | 适合谁 | 装的时候 |
 |---|---|---|---|
-| **AstrBotPC-1.0.2-win64-offline.zip**（懒人版） | 约 280 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
-| AstrBotPC-1.0.2-win64.zip（目录版） | 约 23 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
-| AstrBotPC-1.0.2-win64-single.exe（单文件版） | 约 23 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
+| **AstrBotPC-1.0.3-win64-offline.zip**（懒人版） | 约 280 MB | **推荐，什么都不用准备** | 解压即用，不联网、不用装 Python |
+| AstrBotPC-1.0.3-win64.zip（目录版） | 约 23 MB | 有 Python、网络好、在意下载体积 | 联网下载 NapCat / AstrBot，pip 装依赖 |
+| AstrBotPC-1.0.3-win64-single.exe（单文件版） | 约 23 MB | 就想拷一个文件到处跑 | 联网下载，且仍需本机有 Python |
 
 **懒人版**里带着 NapCat、AstrBot 源码、151 个依赖 wheel，还有一份便携 Python 3.12。下载一个包，解压，双击 `AstrBotPC.exe`，点「开始部署」，全程不用打开浏览器、不用装任何东西、不用连网。
 
@@ -52,6 +52,13 @@ BODY = """## {name}
 - Windows 10/11 自带 WebView2，更老的系统补一个 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 - 绿色版：删目录即卸载，配置与日志写在 `%LOCALAPPDATA%\\AstrBotPC`
 - 懒人版体积大是因为资源摆在 `AstrBotPC.exe` 旁边的 `resources\\` 里，删掉它就是目录版
+
+### 1.0.3：出厂口令直接可用
+
+- **AstrBot 控制台**：账号 `astrbot`、密码 `Astrbot123`。部署时直接写进配置，不再是随机串、不用去日志里翻。
+- **NapCat / SnowLuma 的 OneBot 令牌**：默认 `zhuxin`，AstrBot 与协议端两边写同一个值；老实例里留空的令牌会自动补上。
+- **NapCat WebUI 令牌**：默认 `zhuxin`，装完就能登 WebUI 看账号状态。
+- **都还能改**：服务页「重设密码」、实例页「访问令牌」照旧，改完点一键接线 / 重启生效。
 
 ### 1.0.2：SnowLuma 与 NapCat 并存
 

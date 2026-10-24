@@ -115,7 +115,7 @@ export function mount(root, ctx) {
       <div class="card-head" style="margin-bottom:10px">
         <div>
           <h3 style="font-size:14px">${esc(c.username || 'astrbot')}</h3>
-          <p class="muted" style="font-size:12px">${c.password ? '默认密码，建议改掉' : '密码是哈希存的，忘了只能重设'} · 端口 ${esc(String(c.port || 6185))}</p>
+          <p class="muted" style="font-size:12px">${c.password ? '出厂密码，登录后建议改掉' : '密码是哈希存的，忘了只能重设'} · 端口 ${esc(String(c.port || 6185))}</p>
         </div>
         <div class="inline">
           <button class="btn btn--sm" data-act="copy-user">${icon('copy', 13)}复制账号</button>
@@ -230,10 +230,10 @@ export function mount(root, ctx) {
         <label class="field"><span class="field__label">用户名</span>
           <input class="input mono" name="user" value="${esc(creds?.username || 'astrbot')}" /></label>
         <label class="field"><span class="field__label">新密码</span>
-          <input class="input mono" name="pass" value="${gen()}" /></label>
+          <input class="input mono" name="pass" value="${esc(creds?.defaultPassword || gen())}" /></label>
         <div class="row-actions">
-          <button class="btn btn--sm" type="button" data-act="gen">${icon('refresh', 14)}换一个</button>
-          <span class="field__help">生成的是 16 位随机密码，复制走再保存。</span>
+          <button class="btn btn--sm" type="button" data-act="gen">${icon('refresh', 14)}换一个随机密码</button>
+          <span class="field__help">默认填的是出厂密码，直接保存也行。</span>
         </div>`,
       actions: [
         { label: '取消' },
@@ -330,7 +330,7 @@ export function mount(root, ctx) {
       notify.ok('账号已复制');
     } else if (action === 'copy-pass') {
       await copyText(creds?.password || '');
-      notify.ok(creds?.password ? '密码已复制' : '默认密码不是 astrbot，只能重设');
+      notify.ok(creds?.password ? '密码已复制' : '密码是哈希存的，只能重设');
     } else if (action === 'reset-pass') {
       resetPassModal();
     } else if (action === 'rewire') {

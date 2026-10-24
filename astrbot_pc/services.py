@@ -73,9 +73,9 @@ def _child_env(iid: str = "", role: str = "") -> dict[str, str]:
         ndir = runtime.napcat_workdir(iid)
         env["NAPCAT_WORKDIR"] = str(ndir)
         env["NAPCAT_WEBUI_PREFERRED_PORT"] = str(runtime.port(iid, "napcat"))
-        secret = str(inst.get("napcatSecret") or "")
-        if secret:
-            env["NAPCAT_WEBUI_SECRET_KEY"] = secret
+        # 没设就让 NapCat 用出厂令牌，别留空（NapCat 会把空值随机化，用户登不进 WebUI）
+        secret = str(inst.get("napcatSecret") or "") or paths.DEFAULT_NAPCAT_SECRET
+        env["NAPCAT_WEBUI_SECRET_KEY"] = secret
         base = _napcat_base()
         if base:
             env.setdefault("NAPCAT_MAIN_PATH", str(base / "napcat.mjs"))

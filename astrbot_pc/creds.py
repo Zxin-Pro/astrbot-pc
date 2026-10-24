@@ -1,8 +1,8 @@
-"""AstrBot 控制台（Dashboard）账号：读状态、重设密码。
+"""AstrBot 控制台（Dashboard）账号：读状态、写默认密码、重设密码。
 
 AstrBot 只存哈希（默认 md5，升级后 pbkdf2_sha256），存进去的原文谁也拿不回来。
 所以这里不做「把密码显示出来」这种假功能，而是：
-- 密码还是内置默认值 astrbot 时，直接把默认密码告诉你，省得翻文档；
+- 密码还是出厂默认值（paths.DEFAULT_DASHBOARD_PASSWORD）时，直接把明文告诉你；
 - 改过密码了，就给一个「重设」——生成一串强密码、写两套哈希、立刻可复制。
 """
 
@@ -18,7 +18,9 @@ from typing import Any
 
 from . import paths, runtime
 
-DEFAULT_PASSWORD = "astrbot"
+DEFAULT_PASSWORD = paths.DEFAULT_DASHBOARD_PASSWORD
+# 1.0.2 及更早的出厂密码。老配置里还是它，也要能认出来并显示明文。
+LEGACY_PASSWORDS = ("astrbot",)
 ITERATIONS = 600_000
 
 
@@ -47,8 +49,39 @@ def _pbkdf2(raw: str) -> str:
     return f"pbkdf2_sha256${ITERATIONS}${salt}${digest}"
 
 
+def _default_plain(stored: str) -> str:
+    """stored 是出厂密码的 md5 时返回明文，否则空串。"""
+    if not isinstance(stored, str) or not stored:
+        return ""
+    low = stored.lower()
+    for raw in (DEFAULT_PASSWORD, *LEGACY_PASSWORDS):
+        if low == _md5(raw):
+            return raw
+    return ""
+
+
 def _is_default(stored: str) -> bool:
-    return isinstance(stored, str) and stored.lower() == _md5(DEFAULT_PASSWORD)
+    return bool(_default_plain(stored))
+
+
+def ensure_default_password(dash: dict[str, Any]) -> bool:
+    """给还没设密码的 dashboard 写死出厂密码，返回是否改过。
+
+    AstrBot 启动时若发现 dashboard 没有哈希，会自己生成一串随机密码打到日志里。
+    部署阶段先把哈希写进去，用户就永远拿到约定的那一个。
+    已经有密码（用户改过、或老版本生成的随机串）时绝不动它。
+    """
+    if not isinstance(dash, dict):
+        return False
+    if dash.get("pbkdf2_password") or dash.get("password"):
+        return False
+    dash.update({
+        "password": _md5(DEFAULT_PASSWORD),
+        "pbkdf2_password": _pbkdf2(DEFAULT_PASSWORD),
+        "password_storage_upgraded": True,
+        "password_change_required": False,
+    })
+    return True
 
 
 def generate() -> str:
@@ -73,9 +106,10 @@ def info() -> dict[str, Any]:
     upgraded = bool(dash.get("password_storage_upgraded"))
     password = ""
     hint = ""
-    if _is_default(stored) or (not stored and not dash.get("pbkdf2_password")):
-        password = DEFAULT_PASSWORD
-        hint = "还是初始密码，建议登录后改掉"
+    matched = _default_plain(stored)
+    if matched or (not stored and not dash.get("pbkdf2_password")):
+        password = matched or DEFAULT_PASSWORD
+        hint = "还是出厂密码，建议登录后改掉"
     elif upgraded or str(dash.get("pbkdf2_password") or ""):
         hint = "密码已加密保存，看不到原文；忘了就点「重设密码」"
     else:
@@ -93,6 +127,8 @@ def info() -> dict[str, Any]:
         "port": port,
         "changeRequired": bool(dash.get("password_change_required")),
         "upgraded": upgraded,
+        # 出厂密码常量给前端做提示用（"密码忘了就试这个"）
+        "defaultPassword": DEFAULT_PASSWORD,
     }
 
 

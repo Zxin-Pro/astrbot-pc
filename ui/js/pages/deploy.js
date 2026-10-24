@@ -93,6 +93,7 @@ export function mount(root, ctx) {
                 <li class="inline"><span class="step__idx" style="width:20px;height:20px;font-size:11px">2</span> 在「服务」里确认两个进程都是运行中</li>
                 <li class="inline"><span class="step__idx" style="width:20px;height:20px;font-size:11px">3</span> 去 AstrBot 控制台填模型 API Key</li>
               </ol>
+              <p class="field__help" style="margin:12px 0 0">控制台账号 <span class="mono">astrbot</span> / <span class="mono">Astrbot123</span>；协议端 WebUI 令牌 <span class="mono">zhuxin</span>。装好就能登，之后自己改。</p>
               <button class="btn btn--block" style="margin-top:14px" data-act="open-webui">
                 ${icon('external', 15)}打开 AstrBot 控制台
               </button>
