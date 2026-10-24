@@ -183,6 +183,7 @@ astrbot-pc/
 │  ├─ push_api.py   只放行 api.github.com 时的推送通道
 │  ├─ make_icon.py  从一张 PNG 出多尺寸 .ico 与 favicon
 │  ├─ smoke.py      十二页零报错冒烟
+│  ├─ probe_creds.py         出厂口令（Astrbot123 / zhuxin）接口级回归
 │  ├─ probe_glass.py         玻璃/实色 × 深浅 的全部截图
 │  ├─ probe_glass_qa.py      卡片实际渲染色算对比度 + 滚动帧率
 │  ├─ probe_glass_overlay.py 弹层、吐司、降低透明度与降低动效

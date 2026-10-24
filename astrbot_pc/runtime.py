@@ -237,7 +237,7 @@ def ensure(iid: str | None = None, seed_from: str | None = None) -> dict[str, An
                 for p in src.glob("*.json"):
                     _copy_file(p, napcat_config(sid) / p.name)
 
-    # 实例记录补上 1.5.0 以前没有的字段（只在内存里补，不动用户配置）
+    # 实例记录补上旧版没有的字段（只在内存里补，不动用户配置）
     inst = get(sid) or {}
     if inst:
         inst.setdefault("id", sid)

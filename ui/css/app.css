@@ -1893,7 +1893,7 @@ body.no-shell .titlebar { grid-template-columns: 1fr auto 1fr; }
 
 .field-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .field-inline .input { flex: 1 1 180px; min-width: 0; }
-/* v1.5.0：提示条、背景缩略图、精简模式 */
+/* 提示条、背景缩略图、精简模式 */
 .notice {
   display: flex;
   gap: 10px;
@@ -1936,7 +1936,7 @@ body.no-shell .titlebar { grid-template-columns: 1fr auto 1fr; }
 .chat-msg small { font-size: var(--f-11); }
 
 
-/* v1.5.0 排障页 */
+/* 排障页 */
 .diag-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .diag-list { display: flex; flex-direction: column; }
 .diag-row { display: flex; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line); }

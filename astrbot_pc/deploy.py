@@ -643,7 +643,7 @@ class DeployRunner:
             except Exception:
                 conf = {}
         conf.setdefault("dashboard", {})
-        conf["dashboard"].update({"enable": True, "host": "127.0.0.1", "port": webui_port})
+        conf["dashboard"].update({"enable": True, "host": "127.0.0.1", "port": webui_port, "username": "astrbot"})
         # 出厂密码写死在这里：AstrBot 启动时若发现没有哈希，会自己生成随机密码打日志，
         # 用户就得去翻日志。已有密码的配置不会被覆盖。
         from . import creds
